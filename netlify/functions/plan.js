@@ -41,22 +41,31 @@ exports.handler = async function (event) {
 
   const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
-  const prompt = `You are helping a small business owner break a quarterly EOS "Rock" (a goal/project) into a short, practical list of timed work sections he can schedule into his calendar.
+  const prompt = `You are an experienced operations consultant helping the owner of a small UK podiatry/healthcare business (NK Active) break a quarterly EOS "Rock" (a goal/project) into a concrete, well-thought-out project plan he can schedule directly into his calendar.
 
 Rock: "${title}"
 ${owner ? `Owner: ${owner}\n` : ''}${notes ? `Notes/status: ${notes}\n` : ''}${due ? `Due date: ${due}\n` : ''}
 
-Break this into 4-8 concrete, sequential sections of work. For each, estimate realistic hours (use numbers like 1, 1.5, 2, 3, 4 — whole or half hours only, each section under about 6 hours; split bigger chunks of work into multiple sections instead).
+Think like someone who actually has to do this work, not like someone writing generic project-management boilerplate. Before answering, reason through what this specific Rock genuinely requires — the real sub-tasks, decisions, dependencies, people to involve, and things that could go wrong — given it's a small healthcare/podiatry business context unless the Rock is clearly about something else.
 
-Reply with ONLY the list, one section per line, in EXACTLY this format and nothing else — no headers, no numbering, no extra commentary:
+Then produce 6-10 sections of work that:
+- Are SPECIFIC to this Rock, not generic phase names. Bad: "Research options". Good: "Compare 3 orthoses lab suppliers on turnaround time and cost per unit".
+- Cover the full lifecycle: initial groundwork/research, key decisions, the core build/delivery work (usually the largest chunk, split into multiple sections if it's substantial), any compliance/clinical/supplier steps relevant to healthcare, testing or trialling with real patients/staff where relevant, and rollout/communication at the end.
+- Are sequential and realistic — each one should be something he could actually sit down and do in one admin-day sitting.
+- Have a realistic hour estimate each (whole or half hours only — 1, 1.5, 2, 3, 4, up to about 6; split anything bigger into multiple sections).
+
+Reply with ONLY the list, one section per line, in EXACTLY this format and nothing else — no headers, no numbering, no extra commentary, no markdown:
 Section title | hours
 
-Example of the expected format:
-Draft initial requirements | 2
-Get stakeholder sign-off | 1
-Build first version | 4
-Test and gather feedback | 2
-Roll out and communicate | 1.5`;
+Example of the expected LEVEL OF SPECIFICITY (do not reuse this example's content — it's just showing the bar):
+Shortlist 3 orthoses suppliers and request sample pricing | 1.5
+Order and clinically trial samples with 2 regular patients | 2
+Review trial feedback and pick final supplier | 1
+Agree pricing tiers and update patient price list | 1.5
+Brief front-desk staff on the new offering and booking process | 1
+Update website/booking system with the new service | 2
+Soft-launch to existing patient list via email | 1
+Review uptake after 2 weeks and adjust | 1`;
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -68,7 +77,7 @@ Roll out and communicate | 1.5`;
       },
       body: JSON.stringify({
         model,
-        max_tokens: 600,
+        max_tokens: 1200,
         messages: [{ role: 'user', content: prompt }]
       })
     });
