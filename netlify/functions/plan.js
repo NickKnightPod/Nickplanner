@@ -68,29 +68,4 @@ Soft-launch to existing patient list via email | 1
 Review uptake after 2 weeks and adjust | 1`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1200,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      return {
-        statusCode: resp.status,
-        body: JSON.stringify({ error: (data && data.error && data.error.message) || 'Anthropic API error' })
-      };
-    }
-    const text = (data.content && data.content[0] && data.content[0].text) || '';
-    return { statusCode: 200, body: JSON.stringify({ plan: text.trim() }) };
-  } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
-  }
-};
+    const resp = await
