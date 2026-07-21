@@ -6,6 +6,7 @@
 <title>EOS Planner — Rocks, To-Dos &amp; Projects</title>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --bg:#f7f7f5; --panel:#ffffff; --border:#e5e3de; --text:#2b2a27; --muted:#78766f;
@@ -58,6 +59,8 @@
   .icon-btn:hover{background:var(--bg);}
   .section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:22px 0 8px;}
   .milestone-block{margin-left:16px;border-left:2px solid var(--border);padding-left:14px;margin-top:8px;}
+  .completed-toggle{color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;padding:6px 4px;user-select:none;}
+  .completed-toggle:hover{color:var(--text);}
   #gantt-container{overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
   .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
@@ -123,6 +126,7 @@
     <div class="sub">Rocks &middot; Milestones &middot; To-Dos &middot; auto-scheduled into your admin time</div>
   </div>
   <div class="toolbar">
+    <button class="btn" onclick="openQuickAddTask()">+ Add Task</button>
     <button class="btn secondary" id="btnExport">⬇ Export to Excel</button>
     <label class="btn secondary" style="margin:0;cursor:pointer;">
       ⬆ Import from Excel (full backup)
@@ -171,9 +175,11 @@
     <label>Owner</label>
     <input id="rockOwner" value="Nick">
     <label>Notes</label>
-    <textarea id="rockNotes"></textarea>
+    <textarea id="rockNotes" placeholder="A few lines on what this Rock is about — the more detail here, the better Claude's draft plan will be if you use the button below."></textarea>
+    <div class="hint" id="rockAskClaudeStatus" style="margin-top:2px;"></div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('rockModalBg')">Cancel</button>
+      <button class="btn secondary" onclick="saveRockAndAskClaude()">✨ Save &amp; Ask Claude to draft the plan</button>
       <button class="btn" onclick="saveRock()">Save Rock</button>
     </div>
   </div>
@@ -213,6 +219,19 @@
     <label>Estimated hours</label>
     <input type="number" id="todoHours" value="2" min="0.5" step="0.5">
     <div class="hint">The planner will slot this into your next available admin time with room, working backward from the deadline.</div>
+    <label>Repeat</label>
+    <select id="todoRepeat">
+      <option value="none">Does not repeat</option>
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+    </select>
+    <div class="hint">When you tick a repeating to-do as done, the next occurrence is created automatically with a fresh deadline — you don't need to re-add it yourself.</div>
+    <div class="settings-row" id="todoAskClaudeRow" style="margin-top:10px;">
+      <button class="btn secondary" onclick="askClaudeForTask()">✨ Ask Claude to turn this into a full plan</button>
+      <span id="todoAskClaudeStatus" class="hint" style="margin:0;"></span>
+    </div>
+    <div class="hint">If this is bigger than one task, this turns it into a Rock and drafts a multi-step plan for it — same as "Map out the plan", just starting from a single task instead.</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('todoModalBg')">Cancel</button>
       <button class="btn" onclick="saveTodo()">Save To-Do</button>
@@ -228,8 +247,13 @@
     <div class="hint" style="margin-top:-4px;">One section per line: <code>Section name | hours</code> (e.g. <code>Draft workflow doc | 3</code>). Hours default to 2 if you leave them off. Each section becomes a to-do — the planner spreads their deadlines evenly between now and the Rock's due date, then slots them into your admin days for you automatically.</div>
     <div class="settings-row" style="margin-top:8px;">
       <button class="btn secondary" id="btnAskClaude" onclick="askClaudeForPlan()">✨ Ask Claude to draft this</button>
+      <label class="btn secondary" style="margin:0;cursor:pointer;">
+        📤 Upload a plan
+        <input type="file" id="filePlanUpload" accept=".txt,.csv,.xlsx,.docx" style="display:none;">
+      </label>
       <span id="askClaudeStatus" class="hint" style="margin:0;"></span>
     </div>
+    <div class="hint" style="margin-top:-2px;">Upload a .txt, .csv, .xlsx or .docx file with a rough task list or plan — it gets added to the Sections box below as editable lines, same as Ask Claude's draft.</div>
     <label>Sections</label>
     <textarea id="planSections" style="min-height:180px;" placeholder="Draft workflow doc | 3
 Get team sign-off | 1
@@ -616,7 +640,8 @@ function rockCounts(rock){
 function setTodoStatus(todoId, status){
   const t = findTodoRef(todoId);
   if(!t) return;
-  if(status==='done'){ t.done=true; t.inProgress=false; t.atRisk=false; }
+  const wasDone = t.done;
+  if(status==='done'){ t.done=true; t.inProgress=false; t.atRisk=false; if(!wasDone) maybeSpawnRecurrence(t); }
   else if(status==='doing'){ t.done=false; t.inProgress=true; }
   else { t.done=false; t.inProgress=false; }
   saveState(); render();
@@ -693,7 +718,7 @@ function renderBoard(){
           const st = todoStatus(t);
           html += `<div class="mini-todo ${(t.atRisk && !t.done)?'risk':''}" onclick="cycleTodoStatus('${t.id}')">
             <span class="mini-todo-pill">${st==='done'?'✅':st==='doing'?'🔵':'⬜'}</span>
-            <span class="mini-todo-title ${t.done?'done':''}">${escapeHtml(t.title)}</span>
+            <span class="mini-todo-title ${t.done?'done':''}">${escapeHtml(t.title)}${(t.recurrence && t.recurrence!=='none') ? ' 🔁' : ''}</span>
             ${(t.atRisk && !t.done) ? '<span class="mini-todo-risk">AT RISK</span>' : ''}
           </div>`;
         });
@@ -876,6 +901,7 @@ function todoRow(t){
           <span>Due ${fmtDate(t.hardDeadline)}</span>
           <span>Scheduled ${fmtDate(t.scheduledDate)}</span>
           <span>${t.hours||1}h</span>
+          ${(t.recurrence && t.recurrence!=='none') ? `<span title="Repeats ${t.recurrence}">🔁 ${t.recurrence}</span>` : ''}
           ${statusTag(t)}
         </div>
       </div>
@@ -885,6 +911,47 @@ function todoRow(t){
       </div>
     </div>
   </div>`;
+}
+
+// Transient (not persisted) view state for the Rocks & To-Dos list — which
+// Rocks show their full breakdown, and which "completed" sub-groups are
+// expanded. Rocks marked done collapse by default so a finished Rock reads
+// as one tidy line instead of its whole (now-irrelevant) to-do history;
+// active Rocks stay open by default. Either can be toggled by hand, and that
+// choice is remembered (per rockId) for the rest of the session.
+let rockCollapsedOverride = {};
+let completedGroupsExpanded = new Set();
+function isRockCollapsed(rock){
+  if(Object.prototype.hasOwnProperty.call(rockCollapsedOverride, rock.id)) return rockCollapsedOverride[rock.id];
+  return !!rock.done;
+}
+function toggleRockCollapsed(rockId){
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(!rock) return;
+  rockCollapsedOverride[rockId] = !isRockCollapsed(rock);
+  renderRocks();
+}
+function toggleCompletedGroup(groupKey){
+  if(completedGroupsExpanded.has(groupKey)) completedGroupsExpanded.delete(groupKey); else completedGroupsExpanded.add(groupKey);
+  renderRocks();
+}
+// Renders a to-do list with completed items tucked away behind a "N
+// completed" toggle instead of listed inline — keeps a mostly-done Rock
+// readable at a glance instead of a wall of struck-through DONE rows.
+function renderTodoGroup(todos, groupKey){
+  const active = todos.filter(t=>t && !t.done);
+  const completed = todos.filter(t=>t && t.done);
+  let html = '';
+  active.forEach(t => { html += todoRow(t); });
+  if(completed.length){
+    const expanded = completedGroupsExpanded.has(groupKey);
+    html += `<div class="completed-toggle" onclick="toggleCompletedGroup('${groupKey}')">${expanded?'▾':'▸'} ${completed.length} completed</div>`;
+    if(expanded) completed.forEach(t => { html += todoRow(t); });
+  }
+  if(active.length===0 && completed.length===0){
+    html += `<div class="empty" style="padding:10px 0;">No to-dos here yet.</div>`;
+  }
+  return html;
 }
 
 function renderRocks(){
@@ -899,6 +966,7 @@ function renderRocks(){
     const rockTodos = allTodos().filter(t=>t.rockId===rock.id);
     const doneCount = rockTodos.filter(t=>t.done).length;
     const pct = rockTodos.length ? Math.round(doneCount/rockTodos.length*100) : 0;
+    const collapsed = isRockCollapsed(rock);
     html += `<div class="card${rock.done?' done':''}">
       <div class="row-top">
         <div>
@@ -911,27 +979,24 @@ function renderRocks(){
           <button class="icon-btn" onclick="openMsModal('${rock.id}')">+ Milestone</button>
           <button class="icon-btn" onclick="openTodoModal('${rock.id}','')">+ To-Do</button>
           <button class="icon-btn" style="background:var(--accent-light);border-color:var(--accent);color:var(--accent);" onclick="openPlanModal('${rock.id}')">📋 Plan sections</button>
+          <button class="icon-btn" onclick="toggleRockCollapsed('${rock.id}')">${collapsed?'▸ Show breakdown':'▾ Hide breakdown'}</button>
         </div>
       </div>`;
-    (rock.todos||[]).forEach(t => {
-      const full = allTodos().find(x=>x.id===t.id);
-      html += todoRow(full);
-    });
-    (rock.milestones||[]).forEach(ms => {
-      html += `<div class="milestone-block">
-        <div class="row-top">
-          <div><strong>🚩 ${escapeHtml(ms.title)}</strong> <span class="meta" style="display:inline;">Due ${fmtDate(ms.due)}</span></div>
-          <div class="row-actions">
-            <button class="icon-btn" onclick="deleteMilestone('${rock.id}','${ms.id}')">Delete</button>
-            <button class="icon-btn" onclick="openTodoModal('${rock.id}','${ms.id}')">+ To-Do</button>
-          </div>
-        </div>`;
-      (ms.todos||[]).forEach(t => {
-        const full = allTodos().find(x=>x.id===t.id);
-        html += todoRow(full);
+    if(!collapsed){
+      html += renderTodoGroup((rock.todos||[]).map(t=>allTodos().find(x=>x.id===t.id)), rock.id);
+      (rock.milestones||[]).forEach(ms => {
+        html += `<div class="milestone-block">
+          <div class="row-top">
+            <div><strong>🚩 ${escapeHtml(ms.title)}</strong> <span class="meta" style="display:inline;">Due ${fmtDate(ms.due)}</span></div>
+            <div class="row-actions">
+              <button class="icon-btn" onclick="deleteMilestone('${rock.id}','${ms.id}')">Delete</button>
+              <button class="icon-btn" onclick="openTodoModal('${rock.id}','${ms.id}')">+ To-Do</button>
+            </div>
+          </div>`;
+        html += renderTodoGroup((ms.todos||[]).map(t=>allTodos().find(x=>x.id===t.id)), rock.id+'|'+ms.id);
+        html += `</div>`;
       });
-      html += `</div>`;
-    });
+    }
     html += `</div>`;
   });
   el.innerHTML = html;
@@ -1159,7 +1224,11 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":
 /* ---------- CRUD actions ---------- */
 function toggleDone(todoId, val){
   const t = findTodoRef(todoId);
-  if(t){ t.done = val; if(val){ t.atRisk=false; t.inProgress=false; } }
+  if(t){
+    const wasDone = t.done;
+    t.done = val;
+    if(val){ t.atRisk=false; t.inProgress=false; if(!wasDone) maybeSpawnRecurrence(t); }
+  }
   saveState(); render();
 }
 function deleteTodo(todoId){
@@ -1198,20 +1267,41 @@ function openRockModal(id){
   document.getElementById('rockNotes').value = rock?rock.notes:'';
   openModal('rockModalBg');
 }
-function saveRock(){
+// Returns the saved Rock's id, or null if validation failed — shared by the
+// plain "Save Rock" button and "Save & Ask Claude" so both go through the
+// exact same save logic.
+function persistRockFromModal(){
   const id = document.getElementById('rockId').value;
   const title = document.getElementById('rockTitle').value.trim();
   const due = document.getElementById('rockDue').value;
   const owner = document.getElementById('rockOwner').value.trim();
   const notes = document.getElementById('rockNotes').value.trim();
-  if(!title || !due){ alert('Please enter a title and due date.'); return; }
+  if(!title || !due){ alert('Please enter a title and due date.'); return null; }
+  let rockId = id;
   if(id){
     const rock = state.rocks.find(r=>r.id===id);
     Object.assign(rock, {title, due, owner, notes});
   } else {
-    state.rocks.push({id: uid(), title, due, owner, notes, milestones:[], todos:[]});
+    rockId = uid();
+    state.rocks.push({id: rockId, title, due, owner, notes, milestones:[], todos:[]});
   }
-  saveState(); closeModal('rockModalBg'); render();
+  saveState(); render();
+  return rockId;
+}
+function saveRock(){
+  const rockId = persistRockFromModal();
+  if(rockId) closeModal('rockModalBg');
+}
+// "Save & Ask Claude to draft the plan" — saves the Rock exactly like Save
+// Rock does, then immediately opens the Plan sections modal for it and
+// triggers Ask Claude, so going from "rough idea" to "drafted plan" is one
+// click instead of save-then-reopen-then-click-Ask-Claude.
+async function saveRockAndAskClaude(){
+  const rockId = persistRockFromModal();
+  if(!rockId) return;
+  closeModal('rockModalBg');
+  openPlanModal(rockId);
+  await askClaudeForPlan();
 }
 
 function openMsModal(rockId){
@@ -1232,15 +1322,53 @@ function saveMilestone(){
   saveState(); closeModal('msModalBg'); render();
 }
 
+// A dedicated bucket for tasks added via "+ Add Task" that aren't tied to
+// any specific Rock — kept separate from the "VTO To-Dos" bucket (which the
+// weekly VTO import fully rebuilds each time) so a manually quick-added task
+// never gets wiped out by re-importing the spreadsheet.
+function findGeneralTasksBucket(){ return state.rocks.find(r=>r.__generalTasks); }
+function findOrCreateGeneralTasksBucket(){
+  let rock = findGeneralTasksBucket();
+  if(!rock){
+    rock = {id: uid(), title: 'General Tasks', owner: 'Nick', due: currentQuarterInfo().end, notes: 'Quick-added tasks not tied to a specific Rock.', milestones:[], todos:[], __generalTasks:true};
+    state.rocks.push(rock);
+  }
+  return rock;
+}
+function openQuickAddTask(){ openTodoModal('__general__', ''); }
+
+// "Ask Claude to turn this into a full plan" — for a task that turns out to
+// be bigger than one line. Promotes whatever's typed in the to-do form into
+// a real Rock (so it gets its own place in the Board/Timeline/etc.), then
+// opens the Plan sections modal for it and triggers Ask Claude, same as the
+// Rock-modal version of this button.
+async function askClaudeForTask(){
+  const title = document.getElementById('todoTitle').value.trim();
+  const status = document.getElementById('todoAskClaudeStatus');
+  if(!title){ alert('Enter a task title first.'); return; }
+  status.textContent = 'Setting this up as a Rock…';
+  const rockId = uid();
+  state.rocks.push({id: rockId, title, due: currentQuarterInfo().end, owner:'Nick', notes:'', milestones:[], todos:[]});
+  saveState(); render();
+  status.textContent = '';
+  closeModal('todoModalBg');
+  openPlanModal(rockId);
+  await askClaudeForPlan();
+}
+
 function openTodoModal(rockId, msId, todoId){
-  document.getElementById('todoModalTitle').textContent = todoId ? 'Edit To-Do' : 'New To-Do';
+  document.getElementById('todoModalTitle').textContent = todoId ? 'Edit To-Do' : (rockId==='__general__' ? 'New Task' : 'New To-Do');
   document.getElementById('todoId').value = todoId||'';
   document.getElementById('todoRockId').value = rockId;
   document.getElementById('todoMsId').value = msId||'';
   const sel = document.getElementById('todoParent');
   sel.innerHTML = '';
-  const rock = state.rocks.find(r=>r.id===rockId);
-  const optRock = document.createElement('option'); optRock.value=''; optRock.textContent='Rock: '+rock.title; sel.appendChild(optRock);
+  // '__general__' is a placeholder meaning "not tied to a Rock yet" — the
+  // real General Tasks bucket is only created (or reused) at save time, so
+  // opening this modal and cancelling never leaves a stray empty Rock behind.
+  const isGeneral = rockId === '__general__';
+  const rock = isGeneral ? (findGeneralTasksBucket() || {title:'General Tasks (not linked to a Rock)', milestones:[]}) : state.rocks.find(r=>r.id===rockId);
+  const optRock = document.createElement('option'); optRock.value=''; optRock.textContent = isGeneral ? 'General Tasks (not linked to a Rock)' : 'Rock: '+rock.title; sel.appendChild(optRock);
   (rock.milestones||[]).forEach(ms=>{
     const o = document.createElement('option'); o.value=ms.id; o.textContent='Milestone: '+ms.title; sel.appendChild(o);
   });
@@ -1250,39 +1378,44 @@ function openTodoModal(rockId, msId, todoId){
     document.getElementById('todoTitle').value = t.title;
     document.getElementById('todoDeadline').value = t.deadline||'';
     document.getElementById('todoHours').value = t.hours||2;
+    document.getElementById('todoRepeat').value = t.recurrence || 'none';
   } else {
     document.getElementById('todoTitle').value = '';
     const days = state.settings.defaultDeadlineDays || 14;
     document.getElementById('todoDeadline').value = isoDate(addDays(new Date(), days));
     document.getElementById('todoHours').value = 2;
+    document.getElementById('todoRepeat').value = 'none';
   }
   openModal('todoModalBg');
 }
 function editTodo(todoId, rockId, msId){ openTodoModal(rockId, msId, todoId); }
 function saveTodo(){
   const id = document.getElementById('todoId').value;
-  const rockId = document.getElementById('todoRockId').value;
+  let rockId = document.getElementById('todoRockId').value;
   const chosenParent = document.getElementById('todoParent').value; // '' = rock-level, else msId
   const title = document.getElementById('todoTitle').value.trim();
   const deadline = document.getElementById('todoDeadline').value;
   const hours = document.getElementById('todoHours').value;
+  const recurrence = document.getElementById('todoRepeat').value || 'none';
   if(!title){ alert('Please enter a title.'); return; }
 
-  const rock = state.rocks.find(r=>r.id===rockId);
-  if(id){
-    // remove from old location first
-    rock.todos = (rock.todos||[]).filter(t=>t.id!==id);
-    let removed = null;
-    (rock.milestones||[]).forEach(ms=>{
-      const idx = (ms.todos||[]).findIndex(t=>t.id===id);
-      if(idx>-1){ removed = ms.todos.splice(idx,1)[0]; }
-    });
-  }
-  const todoObj = {id: id||uid(), title, deadline, hours, done:false, scheduledDate:null, atRisk:false};
+  const rock = rockId === '__general__' ? findOrCreateGeneralTasksBucket() : state.rocks.find(r=>r.id===rockId);
+  rockId = rock.id;
+
+  // Preserve status fields across an edit — a fresh {done:false, ...} object
+  // here used to silently un-complete and un-schedule anything you edited.
+  let preserved = {done:false, scheduledDate:null, atRisk:false, inProgress:false};
   if(id){
     const old = findTodoRef(id);
-    // findTodoRef may fail now since we removed it; use a fresh object but keep done state via lookup before removal - simplified: just keep not done
+    if(old) preserved = {done:old.done, scheduledDate:old.scheduledDate, atRisk:old.atRisk, inProgress:old.inProgress};
+    // remove from old location now that its state is captured
+    rock.todos = (rock.todos||[]).filter(t=>t.id!==id);
+    (rock.milestones||[]).forEach(ms=>{
+      const idx = (ms.todos||[]).findIndex(t=>t.id===id);
+      if(idx>-1) ms.todos.splice(idx,1);
+    });
   }
+  const todoObj = Object.assign({id: id||uid(), title, deadline, hours, recurrence}, preserved);
   if(chosenParent){
     const ms = rock.milestones.find(m=>m.id===chosenParent);
     ms.todos = ms.todos||[]; ms.todos.push(todoObj);
@@ -1290,6 +1423,33 @@ function saveTodo(){
     rock.todos = rock.todos||[]; rock.todos.push(todoObj);
   }
   saveState(); closeModal('todoModalBg'); render();
+}
+
+// ---------- Repeating to-dos ----------
+// When a repeating to-do is marked done, a fresh copy is created right away
+// with its deadline pushed forward by the chosen interval — so "check stock
+// weekly" or "send invoices monthly" keep showing up without you re-adding
+// them, while what you just finished still shows up correctly in history.
+function nextRecurrenceDate(dateStr, recurrence){
+  const d = parseISO(dateStr || todayISO());
+  if(recurrence==='daily') return isoDate(addDays(d,1));
+  if(recurrence==='weekly') return isoDate(addDays(d,7));
+  if(recurrence==='monthly') return isoDate(addMonths(d,1));
+  return null;
+}
+function maybeSpawnRecurrence(t){
+  if(!t || !t.recurrence || t.recurrence==='none') return;
+  const nextDeadline = nextRecurrenceDate(t.deadline, t.recurrence);
+  if(!nextDeadline) return;
+  const clone = {id: uid(), title: t.title, deadline: nextDeadline, hours: t.hours, done:false, scheduledDate:null, atRisk:false, inProgress:false, recurrence: t.recurrence};
+  for(const rock of state.rocks){
+    const idx = (rock.todos||[]).findIndex(x=>x.id===t.id);
+    if(idx>-1){ rock.todos.push(clone); return; }
+    for(const ms of (rock.milestones||[])){
+      const midx = (ms.todos||[]).findIndex(x=>x.id===t.id);
+      if(midx>-1){ ms.todos.push(clone); return; }
+    }
+  }
 }
 
 /* ---------- Plan a Rock into timed sections ----------
@@ -1379,6 +1539,87 @@ function savePlanSections(){
 
   saveState(); closeModal('planModalBg'); render();
   alert(`Added ${parsed.length} section(s) to "${rock.title}" and auto-scheduled them into your admin days.`);
+}
+
+/* ---------- Upload a plan (.txt / .csv / .xlsx / .docx) ----------
+Lets an already-written plan (a rough task list, a meeting-notes doc, a
+spreadsheet) get dropped straight into the Sections box instead of retyping
+it — same editable-before-creating flow as Ask Claude's draft, just sourced
+from a file instead of a model. Each format is reduced to the same "Title |
+hours" line format the box already understands (hours guessed where
+present, left for savePlanSections' own default of 2h otherwise). */
+function linesFromPlainText(text){
+  return text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+}
+function parseCsvPlanText(text){
+  // Deliberately simple (no quoted-comma handling) — good enough for a
+  // basic "task, hours" export, which is the realistic case here.
+  return text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(line=>{
+    const cells = line.split(',');
+    const title = (cells[0]||'').trim();
+    if(!title) return null;
+    const hoursRaw = (cells[1]||'').trim();
+    const hours = hoursRaw && !isNaN(parseFloat(hoursRaw)) ? parseFloat(hoursRaw) : null;
+    return hours!=null ? `${title} | ${hours}` : title;
+  }).filter(Boolean);
+}
+async function parseXlsxPlanFile(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellStyles:true});
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const aoa = getVisibleAOA(sheet); // hidden rows/cols excluded, same rule as everywhere else in the app
+  const lines = [];
+  aoa.forEach((row, idx) => {
+    const title = (row[0]!=null ? String(row[0]) : '').trim();
+    if(!title) return;
+    if(idx===0 && /^(task|title|section|item|to-?do)s?$/i.test(title)) return; // skip an obvious header row
+    const hoursCell = row[1];
+    const hours = (hoursCell!=null && hoursCell!=='' && !isNaN(parseFloat(hoursCell))) ? parseFloat(hoursCell) : null;
+    lines.push(hours!=null ? `${title} | ${hours}` : title);
+  });
+  return lines;
+}
+async function parseDocxPlanFile(file){
+  const buf = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+  const entry = zip.file('word/document.xml');
+  if(!entry) throw new Error('Could not read this .docx file — it may be corrupted or not a real Word document.');
+  const xml = await entry.async('text');
+  // Split on paragraph boundaries, pull every <w:t> run of text within each
+  // paragraph and concatenate — gives one line per paragraph, which for a
+  // typical bullet/numbered task list lines up with one task per line.
+  const paragraphs = xml.split(/<\/w:p>/);
+  const lines = [];
+  paragraphs.forEach(p => {
+    const runs = [...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)];
+    if(runs.length===0) return;
+    let text = runs.map(m=>m[1]).join('');
+    text = text.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").trim();
+    if(text) lines.push(text);
+  });
+  return lines;
+}
+async function handlePlanUpload(file){
+  const status = document.getElementById('askClaudeStatus');
+  status.textContent = 'Reading ' + file.name + '…';
+  try{
+    const ext = (file.name.split('.').pop()||'').toLowerCase();
+    let lines;
+    if(ext==='txt') lines = linesFromPlainText(await file.text());
+    else if(ext==='csv') lines = parseCsvPlanText(await file.text());
+    else if(ext==='xlsx') lines = await parseXlsxPlanFile(file);
+    else if(ext==='docx') lines = await parseDocxPlanFile(file);
+    else { alert('Unsupported file type — please upload a .txt, .csv, .xlsx or .docx file.'); status.textContent=''; return; }
+
+    if(!lines || lines.length===0){ alert('Could not find any task lines in that file.'); status.textContent=''; return; }
+    const box = document.getElementById('planSections');
+    const existing = box.value.trim();
+    box.value = existing ? existing + '\n' + lines.join('\n') : lines.join('\n');
+    status.textContent = `Added ${lines.length} line(s) from ${file.name} — edit as needed before creating.`;
+  }catch(err){
+    status.textContent = '';
+    alert('Could not read that file: ' + err.message);
+  }
 }
 
 /* ---------- Settings ---------- */
@@ -2155,6 +2396,10 @@ document.getElementById('fileImport').addEventListener('change', (e)=>{
 });
 document.getElementById('fileVtoImport').addEventListener('change', (e)=>{
   if(e.target.files[0]) importVto(e.target.files[0]);
+  e.target.value='';
+});
+document.getElementById('filePlanUpload').addEventListener('change', (e)=>{
+  if(e.target.files[0]) handlePlanUpload(e.target.files[0]);
   e.target.value='';
 });
 document.getElementById('btnSettings').addEventListener('click', openSettings);
