@@ -386,11 +386,32 @@ function isHoliday(dateStr){
   const holidays = state.settings.holidays || [];
   return holidays.some(h => dateStr >= h.start && dateStr <= h.end);
 }
+// How many work minutes are still ahead today within a given admin window —
+// so "today" stops looking like a fully-open slot once the window has partly
+// or fully elapsed. Walks the same break/lunch-aware template used to build
+// the Day Schedule and only counts the portion of each work block that's
+// still in front of the current clock time; a window that's already over
+// (e.g. checking at 16:58 for a window that ends at 17:00, once you subtract
+// breaks) correctly comes back near/at zero rather than a full day's hours.
+function remainingWorkMinutesToday(dow){
+  const blocks = buildDayTemplate(dow);
+  const now = new Date();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  let remain = 0;
+  blocks.forEach(b=>{
+    if(b.type !== 'work') return;
+    const start = Math.max(b.start, nowMin);
+    if(start < b.end) remain += (b.end - start);
+  });
+  return remain;
+}
+
 function generateSlots(weeksAhead){
   const s = state.settings;
   const anchor = parseISO(s.tueAnchor);
   const slots = [];
   const start = new Date(); start.setHours(0,0,0,0);
+  const today = todayISO();
   for(let i=0; i<weeksAhead*7; i++){
     const d = addDays(start, i);
     const dow = d.getDay();
@@ -398,16 +419,22 @@ function generateSlots(weeksAhead){
     if(isHoliday(dateStr)) continue;
     const override = state.outlookCapacityOverride ? state.outlookCapacityOverride[dateStr] : undefined;
     if(override !== undefined && override <= 0) continue; // fully booked by Outlook meetings
-    if(dow === 1){ // Monday
-      slots.push({date: dateStr, label: 'Mon PM (admin)', capacity: override!==undefined?override:capacityMinutesForDow(1)/60});
-    } else if(dow === 2){ // Tuesday - check alternate
+    let label = null, dowNum = null;
+    if(dow === 1){ label = 'Mon PM (admin)'; dowNum = 1; }
+    else if(dow === 2){
       const diffWeeks = Math.round((d - anchor) / (7*24*3600*1000));
-      if(diffWeeks % 2 === 0){
-        slots.push({date: dateStr, label: 'Tue (admin, alt week)', capacity: override!==undefined?override:capacityMinutesForDow(2)/60});
-      }
-    } else if(dow === 4){ // Thursday
-      slots.push({date: dateStr, label: 'Thu (admin)', capacity: override!==undefined?override:capacityMinutesForDow(4)/60});
+      if(diffWeeks % 2 === 0){ label = 'Tue (admin, alt week)'; dowNum = 2; }
+    } else if(dow === 4){ label = 'Thu (admin)'; dowNum = 4; }
+    if(label === null) continue;
+    let capacity = override!==undefined ? override : capacityMinutesForDow(dowNum)/60;
+    if(dateStr === today){
+      // Clamp today's capacity to whatever's actually still ahead on the
+      // clock — otherwise a task can get "scheduled today" at, say, 16:58
+      // into a window that's effectively already over.
+      capacity = Math.min(capacity, remainingWorkMinutesToday(dowNum)/60);
+      if(capacity <= 1e-9) continue; // nothing left today — skip the slot entirely
     }
+    slots.push({date: dateStr, label, capacity});
   }
   return slots.filter(sl => sl.date >= todayISO());
 }
@@ -565,6 +592,16 @@ function getDayBlocks(dateStr){
     }
   });
 
+  // For today specifically, mark any work chunk that's already behind the
+  // current clock time as 'past' rather than 'free' — so it reads as gone
+  // rather than an open slot, and so the fill loop below (which only ever
+  // touches 'free' chunks) can't place a task into a time that's already
+  // happened.
+  if(dateStr === todayISO()){
+    const nowMin = new Date().getHours()*60 + new Date().getMinutes();
+    chunks.forEach(c=>{ if(c.type==='free' && c.end <= nowMin) c.type = 'past'; });
+  }
+
   const todosToday = allTodos().filter(t=>!t.done && t.scheduledDate===dateStr)
     .sort((a,b)=>(a.hardDeadline||'9999-99-99').localeCompare(b.hardDeadline||'9999-99-99'));
 
@@ -601,7 +638,8 @@ const BLOCK_STYLES = {
   break:   {bg:'var(--done-light)', fg:'var(--muted)', icon:'☕'},
   lunch:   {bg:'var(--done-light)', fg:'var(--muted)', icon:'🍽️'},
   meeting: {bg:'#e8eef7', fg:'#3a5a8c', icon:'🗓️'},
-  free:    {bg:'#fbfbfa', fg:'var(--muted)', icon:''}
+  free:    {bg:'#fbfbfa', fg:'var(--muted)', icon:''},
+  past:    {bg:'#f4f4f2', fg:'var(--muted)', icon:'⏳'}
 };
 
 function renderDaySchedule(){
@@ -632,6 +670,7 @@ function renderDaySchedule(){
       else if(b.type==='break') label = 'Break';
       else if(b.type==='lunch') label = 'Lunch';
       else if(b.type==='meeting') label = escapeHtml(b.subject);
+      else if(b.type==='past') label = '<span style="color:var(--muted);">Already passed</span>';
       else label = '<span style="color:var(--muted);">Free — nothing scheduled</span>';
       html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${style.bg};margin-bottom:5px;">
         <span style="font-size:11.5px;color:${style.fg};font-weight:700;min-width:100px;">${timeLabel}</span>
