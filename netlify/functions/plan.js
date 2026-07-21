@@ -1,3 +1,13 @@
+// Serverless proxy for the "Ask Claude" button in the EOS Planner's
+// "Map out the plan" modal. Runs on Netlify's servers, not in the browser —
+// this is the only safe place to hold an API key, since anything shipped to
+// the browser in a static site is publicly visible to anyone who looks.
+//
+// Setup (one-time, in the Netlify dashboard — this file alone isn't enough):
+//   Site settings -> Environment variables -> add ANTHROPIC_API_KEY
+//   (get a key at https://console.anthropic.com/settings/keys)
+// Optionally also set ANTHROPIC_MODEL to override the default model below.
+
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
@@ -36,8 +46,8 @@ exports.handler = async function (event) {
     (owner ? 'Owner: ' + owner + '\n' : '') +
     (notes ? 'Notes/status: ' + notes + '\n' : '') +
     (due ? 'Due date: ' + due + '\n' : '') +
-    '\nThink like someone who actually has to do this work, not like someone writing generic project-management boilerplate. Before answering, reason through what this specific Rock genuinely requires — the real sub-tasks, decisions, dependencies, people to involve, and things that could go wrong — given it\'s a small healthcare/podiatry business context unless the Rock is clearly about something else.\n\n' +
-    'Then produce 6-10 sections of work that:\n' +
+    '\nThink like someone who actually has to do this work, not like someone writing generic project-management boilerplate — but keep that thinking internal and brief. Do NOT write out your reasoning, analysis, or any preamble in the reply. Go straight to the final list.\n\n' +
+    'Produce 6-10 sections of work that:\n' +
     '- Are SPECIFIC to this Rock, not generic phase names. Bad: "Research options". Good: "Compare 3 orthoses lab suppliers on turnaround time and cost per unit".\n' +
     '- Cover the full lifecycle: initial groundwork/research, key decisions, the core build/delivery work (usually the largest chunk, split into multiple sections if it\'s substantial), any compliance/clinical/supplier steps relevant to healthcare, testing or trialling with real patients/staff where relevant, and rollout/communication at the end.\n' +
     '- Are sequential and realistic — each one should be something he could actually sit down and do in one admin-day sitting.\n' +
@@ -64,7 +74,7 @@ exports.handler = async function (event) {
       },
       body: JSON.stringify({
         model: model,
-        max_tokens: 1200,
+        max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }]
       })
     });
@@ -75,10 +85,17 @@ exports.handler = async function (event) {
         body: JSON.stringify({ error: (data && data.error && data.error.message) || 'Anthropic API error' })
       };
     }
+    // Anthropic can return more than one content block (e.g. a reasoning/
+    // thinking block ahead of the actual answer) — grabbing content[0] alone
+    // silently returns nothing if that first block isn't the text block, so
+    // join every text-type block instead of assuming position 0.
     const blocks = Array.isArray(data.content) ? data.content : [];
     const text = blocks.filter(function (b) { return b && b.type === 'text' && typeof b.text === 'string'; })
       .map(function (b) { return b.text; }).join('\n').trim();
     if (!text) {
+      // Genuinely nothing usable came back — surface that clearly instead of
+      // returning a silent 200 with an empty plan (which just looks like
+      // "Draft added" with nothing actually added, and no error to debug from).
       return {
         statusCode: 502,
         body: JSON.stringify({
