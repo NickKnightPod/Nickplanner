@@ -14,7 +14,10 @@
     --radius:10px; --shadow:0 1px 2px rgba(0,0,0,0.04), 0 1px 8px rgba(0,0,0,0.03);
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  /* Slightly larger base type, more line-height and letter-spacing than a
+     typical dense web-app default — easier to scan and read for a dyslexic,
+     visual-first user rather than optimising for information density. */
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Verdana,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15.5px;line-height:1.55;letter-spacing:.1px;}
   header{background:var(--panel);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
   header h1{font-size:18px;margin:0;font-weight:650;}
   header .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
@@ -75,6 +78,41 @@
   .cap-fill{height:100%;background:var(--accent);}
   .cap-fill.over{background:var(--risk);}
   footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
+
+  /* ---------- Board (Kanban) — the home view ----------
+  Built for a quick-glance, visual-first read of where every project stands:
+  three columns (Not Started / In Progress / Done), one card per Rock with a
+  colour bar + big icon showing its state, a mini progress bar, and an
+  at-a-glance AT RISK badge. Cards expand to a checklist of their sections so
+  individual to-dos can be nudged along without leaving the board. */
+  .board-hint{font-size:13px;color:var(--muted);margin-bottom:14px;}
+  .board{display:flex;gap:16px;align-items:flex-start;overflow-x:auto;padding-bottom:10px;}
+  .board-col{background:#f1f1ee;border-radius:14px;padding:12px;flex:1 1 0;min-width:280px;max-width:400px;min-height:120px;transition:background .12s;}
+  .board-col.drag-over{background:var(--accent-light);outline:2px dashed var(--accent);}
+  .board-col-header{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:750;padding:4px 4px 12px;}
+  .board-col-count{background:#fff;border-radius:20px;padding:1px 9px;font-size:12.5px;color:var(--muted);font-weight:700;margin-left:auto;}
+  .board-col-body{display:flex;flex-direction:column;gap:12px;}
+  .board-empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 6px;}
+  .rock-card{background:var(--panel);border:1px solid var(--border);border-left:6px solid var(--done);border-radius:12px;padding:13px 14px;cursor:grab;box-shadow:var(--shadow);}
+  .rock-card:active{cursor:grabbing;}
+  .rock-card.status-todo{border-left-color:var(--muted);}
+  .rock-card.status-doing{border-left-color:#3a7fc4;}
+  .rock-card.status-done{border-left-color:var(--accent);opacity:.75;}
+  .rock-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;cursor:pointer;}
+  .rock-card-title{font-weight:700;font-size:15px;line-height:1.4;}
+  .rock-card-expand{color:var(--muted);font-size:13px;padding-top:2px;}
+  .rock-card-meta{font-size:12.5px;color:var(--muted);margin-top:6px;}
+  .rock-card-risk{display:inline-flex;align-items:center;gap:4px;background:var(--risk);color:#fff;font-weight:700;font-size:12px;padding:3px 9px;border-radius:20px;margin-top:8px;}
+  .mini-progress{background:var(--done-light);border-radius:6px;height:9px;overflow:hidden;margin-top:10px;}
+  .mini-progress-fill{height:100%;background:var(--accent);}
+  .rock-card-count{font-size:12px;color:var(--muted);margin-top:5px;font-weight:600;}
+  .rock-card-sections{margin:0 2px 4px 10px;padding-left:12px;border-left:2px solid var(--border);}
+  .mini-todo{display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer;border-radius:6px;font-size:13.5px;}
+  .mini-todo:hover{background:var(--bg);}
+  .mini-todo.risk{background:var(--risk-light);}
+  .mini-todo-pill{font-size:14px;flex-shrink:0;}
+  .mini-todo-title.done{text-decoration:line-through;color:var(--muted);}
+  .mini-todo-risk{background:var(--risk);color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:auto;}
 </style>
 </head>
 <body>
@@ -100,7 +138,8 @@
 </header>
 
 <nav>
-  <button class="navbtn active" data-view="today">Day Schedule</button>
+  <button class="navbtn active" data-view="board">🗂 Board</button>
+  <button class="navbtn" data-view="today">Day Schedule</button>
   <button class="navbtn" data-view="week">Week View</button>
   <button class="navbtn" data-view="rocks">Rocks &amp; To-Dos</button>
   <button class="navbtn" data-view="gantt">Project Timeline</button>
@@ -110,7 +149,8 @@
 <main>
   <div id="riskBanner"></div>
 
-  <div id="view-today" class="view"></div>
+  <div id="view-board" class="view"></div>
+  <div id="view-today" class="view" style="display:none;"></div>
   <div id="view-week" class="view" style="display:none;"></div>
   <div id="view-rocks" class="view" style="display:none;"></div>
   <div id="view-gantt" class="view" style="display:none;"></div>
@@ -528,11 +568,142 @@ function statusTag(t){
 function render(){
   runAutoReschedule();
   renderRiskBanner();
+  renderBoard();
   renderToday();
   renderWeek();
   renderRocks();
   renderGantt();
   renderAll();
+}
+
+/* ---------- Board (Kanban) — the home view ----------
+Three columns: Not Started / In Progress / Done. One card per Rock, coloured
+by status with a mini progress bar and an AT RISK badge, so the whole
+portfolio is readable at a glance without opening anything. Cards expand
+in-place to a checklist of their sections/to-dos, each clickable to cycle
+through the same three states, so day-to-day progress can be tracked without
+ever leaving the board. Rock cards are also draggable between columns —
+dragging into "Done" marks the Rock done (same flag the rest of the app
+already uses); dragging out of "Done" un-marks it. Dragging into "Not
+Started"/"In Progress" sets an explicit override (`rock.boardStatus`) so the
+card stays where you put it rather than snapping back to wherever its
+sub-tasks would otherwise place it. */
+let boardExpanded = new Set(); // transient — which Rock cards are expanded; not persisted
+let draggedRockId = null;
+
+function rockTodosFlat(rock){
+  const out = (rock.todos||[]).slice();
+  (rock.milestones||[]).forEach(ms=>{ out.push(...(ms.todos||[])); });
+  return out;
+}
+function todoStatus(t){ return t.done ? 'done' : (t.inProgress ? 'doing' : 'todo'); }
+function rockDerivedStatus(rock){
+  if(rock.done) return 'done';
+  const todos = rockTodosFlat(rock);
+  if(todos.some(t=>t.inProgress || t.done)) return 'doing';
+  return 'todo';
+}
+function rockBoardStatus(rock){ return rock.boardStatus || rockDerivedStatus(rock); }
+function rockRiskCount(rock){ return rockTodosFlat(rock).filter(t=>!t.done && t.atRisk).length; }
+function rockCounts(rock){
+  const todos = rockTodosFlat(rock);
+  const total = todos.length;
+  const done = todos.filter(t=>t.done).length;
+  const doing = todos.filter(t=>!t.done && t.inProgress).length;
+  return {total, done, doing};
+}
+
+function setTodoStatus(todoId, status){
+  const t = findTodoRef(todoId);
+  if(!t) return;
+  if(status==='done'){ t.done=true; t.inProgress=false; t.atRisk=false; }
+  else if(status==='doing'){ t.done=false; t.inProgress=true; }
+  else { t.done=false; t.inProgress=false; }
+  saveState(); render();
+}
+function cycleTodoStatus(todoId){
+  const t = findTodoRef(todoId);
+  if(!t) return;
+  const cur = todoStatus(t);
+  setTodoStatus(todoId, cur==='todo' ? 'doing' : (cur==='doing' ? 'done' : 'todo'));
+}
+function toggleBoardExpand(rockId){
+  if(boardExpanded.has(rockId)) boardExpanded.delete(rockId); else boardExpanded.add(rockId);
+  renderBoard();
+}
+function moveRockToStatus(rockId, status){
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(!rock) return;
+  rock.boardStatus = status;
+  rock.done = (status==='done');
+  saveState(); render();
+}
+function handleBoardDragStart(ev, rockId){
+  draggedRockId = rockId;
+  ev.dataTransfer.setData('text/plain', rockId);
+  ev.dataTransfer.effectAllowed = 'move';
+}
+function handleBoardDrop(ev, targetStatus){
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const rockId = draggedRockId || ev.dataTransfer.getData('text/plain');
+  if(rockId) moveRockToStatus(rockId, targetStatus);
+  draggedRockId = null;
+}
+
+function renderBoard(){
+  const el = document.getElementById('view-board');
+  if(!el) return;
+  const cols = [
+    {key:'todo', label:'Not Started', icon:'⬜'},
+    {key:'doing', label:'In Progress', icon:'🔵'},
+    {key:'done', label:'Done', icon:'✅'}
+  ];
+  let html = `<div class="board-hint">Drag a project card between columns to update its status, or click a card to expand its sections and tick them off one by one.</div>`;
+  html += `<div class="board">`;
+  cols.forEach(col=>{
+    const colRocks = state.rocks.filter(r => rockBoardStatus(r) === col.key);
+    html += `<div class="board-col" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleBoardDrop(event,'${col.key}')">`;
+    html += `<div class="board-col-header">${col.icon} ${col.label}<span class="board-col-count">${colRocks.length}</span></div>`;
+    html += `<div class="board-col-body">`;
+    if(colRocks.length===0) html += `<div class="board-empty">Nothing here</div>`;
+    colRocks.forEach(rock=>{
+      const counts = rockCounts(rock);
+      const riskCount = rockRiskCount(rock);
+      const pct = counts.total ? Math.round((counts.done/counts.total)*100) : 0;
+      const expanded = boardExpanded.has(rock.id);
+      html += `<div class="rock-card status-${col.key}" draggable="true" ondragstart="handleBoardDragStart(event,'${rock.id}')">
+        <div class="rock-card-top" onclick="toggleBoardExpand('${rock.id}')">
+          <div class="rock-card-title">${rock.__vtoGeneral?'🗒️':'🪨'} ${escapeHtml(rock.title)}</div>
+          <div class="rock-card-expand">${expanded?'▾':'▸'}</div>
+        </div>
+        <div class="rock-card-meta">${escapeHtml(rock.owner||'—')} · Due ${fmtDate(rock.due)}</div>
+        ${riskCount>0 ? `<div class="rock-card-risk">⚠ ${riskCount} at risk</div>` : ''}
+        ${counts.total>0
+          ? `<div class="mini-progress"><div class="mini-progress-fill" style="width:${pct}%"></div></div><div class="rock-card-count">${counts.done}/${counts.total} done${counts.doing?` · ${counts.doing} in progress`:''}</div>`
+          : `<div class="rock-card-count" style="color:var(--muted);">No sections yet</div>`}
+      </div>`;
+      if(expanded){
+        const todos = rockTodosFlat(rock);
+        html += `<div class="rock-card-sections">`;
+        if(todos.length===0){
+          html += `<div class="board-empty" style="padding:8px 0;">No sections yet — open the Rock and click "Plan sections".</div>`;
+        }
+        todos.forEach(t=>{
+          const st = todoStatus(t);
+          html += `<div class="mini-todo ${(t.atRisk && !t.done)?'risk':''}" onclick="cycleTodoStatus('${t.id}')">
+            <span class="mini-todo-pill">${st==='done'?'✅':st==='doing'?'🔵':'⬜'}</span>
+            <span class="mini-todo-title ${t.done?'done':''}">${escapeHtml(t.title)}</span>
+            ${(t.atRisk && !t.done) ? '<span class="mini-todo-risk">AT RISK</span>' : ''}
+          </div>`;
+        });
+        html += `</div>`;
+      }
+    });
+    html += `</div></div>`;
+  });
+  html += `</div>`;
+  el.innerHTML = html;
 }
 
 function renderRiskBanner(){
@@ -988,7 +1159,7 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":
 /* ---------- CRUD actions ---------- */
 function toggleDone(todoId, val){
   const t = findTodoRef(todoId);
-  if(t){ t.done = val; if(val){ t.atRisk=false; } }
+  if(t){ t.done = val; if(val){ t.atRisk=false; t.inProgress=false; } }
   saveState(); render();
 }
 function deleteTodo(todoId){
@@ -1158,8 +1329,8 @@ async function askClaudeForPlan(){
     });
     let data;
     try{ data = await resp.json(); }catch(e){ data = null; }
-    if(!resp.ok || !data || data.error){
-      const msg = (data && data.error) || `Request failed (${resp.status})`;
+    if(!resp.ok || !data || data.error || !String(data.plan||'').trim()){
+      const msg = (data && data.error) || (resp.ok ? 'Claude returned an empty draft — try again.' : `Request failed (${resp.status})`);
       status.textContent = '';
       if(resp.status===404 || /ANTHROPIC_API_KEY/i.test(msg)){
         document.getElementById('askClaudeSetupHint').style.display = 'block';
