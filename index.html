@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EOS Planner — Rocks, To-Dos &amp; Projects</title>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="lib/msal-browser.min.js"></script>
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#ffffff; --border:#e5e3de; --text:#2b2a27; --muted:#78766f;
+    --accent:#2f6f4f; --accent-light:#e6f2eb; --warn:#b8862b; --warn-light:#fbf1de;
+    --risk:#b23b3b; --risk-light:#fbe9e9; --done:#8a8a86; --done-light:#f0f0ee;
+    --radius:10px; --shadow:0 1px 2px rgba(0,0,0,0.04), 0 1px 8px rgba(0,0,0,0.03);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  header{background:var(--panel);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+  header h1{font-size:18px;margin:0;font-weight:650;}
+  header .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
+  nav{display:flex;gap:6px;padding:10px 24px 0;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  nav button{background:none;border:none;padding:10px 14px;font-size:13.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-weight:600;}
+  nav button.active{color:var(--accent);border-bottom-color:var(--accent);}
+  main{max-width:1200px;margin:0 auto;padding:20px 24px 80px;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+  .btn{background:var(--accent);color:#fff;border:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--border);}
+  .btn.ghost{background:none;color:var(--accent);border:1px solid var(--accent);}
+  .btn:hover{filter:brightness(0.96);}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:14px;}
+  .card.done{opacity:0.65;}
+  .banner{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--radius);margin-bottom:16px;font-size:13px;}
+  .banner.risk{background:var(--risk-light);color:var(--risk);border:1px solid #f0c9c9;}
+  .banner.info{background:var(--accent-light);color:var(--accent);border:1px solid #cfe6d9;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:800px){.grid{grid-template-columns:1fr;}}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;margin-top:10px;}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:#fff;}
+  textarea{resize:vertical;min-height:50px;}
+  .row-item{border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:var(--panel);}
+  .row-item.risk{border-color:#eab8b8;background:var(--risk-light);}
+  .row-item.warn{border-color:#e6cf9c;background:var(--warn-light);}
+  .row-item.done{opacity:0.6;}
+  .row-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .row-title{font-weight:650;font-size:14.5px;}
+  .row-title.done{text-decoration:line-through;color:var(--done);}
+  .meta{font-size:12px;color:var(--muted);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.2px;}
+  .tag.risk{background:var(--risk);color:#fff;}
+  .tag.warn{background:var(--warn);color:#fff;}
+  .tag.ok{background:var(--accent);color:#fff;}
+  .tag.done{background:var(--done);color:#fff;}
+  .row-actions{display:flex;gap:6px;}
+  .icon-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;}
+  .icon-btn:hover{background:var(--bg);}
+  .section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:22px 0 8px;}
+  .milestone-block{margin-left:16px;border-left:2px solid var(--border);padding-left:14px;margin-top:8px;}
+  #gantt-container{overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
+  .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;z-index:50;}
+  .modal-bg.open{display:flex;}
+  .modal{background:#fff;border-radius:var(--radius);padding:20px;width:480px;max-width:92vw;max-height:88vh;overflow:auto;}
+  .modal h3{margin-top:0;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+  .settings-row{display:flex;gap:10px;align-items:center;margin-bottom:8px;}
+  .settings-row label{margin:0;flex:1;}
+  .settings-row input{flex:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:3px;}
+  table.slots{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.slots th,table.slots td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);}
+  .cap-bar{background:var(--done-light);border-radius:6px;height:8px;overflow:hidden;width:100px;}
+  .cap-fill{height:100%;background:var(--accent);}
+  .cap-fill.over{background:var(--risk);}
+  footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>EOS Planner</h1>
+    <div class="sub">Rocks &middot; Milestones &middot; To-Dos &middot; auto-scheduled into your admin time</div>
+  </div>
+  <div class="toolbar">
+    <button class="btn secondary" id="btnExport">⬇ Export to Excel</button>
+    <label class="btn secondary" style="margin:0;cursor:pointer;">
+      ⬆ Import from Excel (full backup)
+      <input type="file" id="fileImport" accept=".xlsx" style="display:none;">
+    </label>
+    <label class="btn" style="margin:0;cursor:pointer;">
+      🔄 Weekly VTO Update
+      <input type="file" id="fileVtoImport" accept=".xlsx" style="display:none;">
+    </label>
+    <button class="btn secondary" id="btnSettings">⚙ Settings</button>
+    <button class="btn ghost" id="btnSyncOutlook" onclick="syncOutlookNow()" style="display:none;">🔄 Sync Outlook</button>
+  </div>
+</header>
+
+<nav>
+  <button class="navbtn active" data-view="today">Day Schedule</button>
+  <button class="navbtn" data-view="week">Week View</button>
+  <button class="navbtn" data-view="rocks">Rocks &amp; To-Dos</button>
+  <button class="navbtn" data-view="gantt">Project Timeline</button>
+  <button class="navbtn" data-view="all">All To-Dos</button>
+</nav>
+
+<main>
+  <div id="riskBanner"></div>
+
+  <div id="view-today" class="view"></div>
+  <div id="view-week" class="view" style="display:none;"></div>
+  <div id="view-rocks" class="view" style="display:none;"></div>
+  <div id="view-gantt" class="view" style="display:none;"></div>
+  <div id="view-all" class="view" style="display:none;"></div>
+</main>
+
+<footer>Data is saved automatically in this browser. Use Export to Excel to back up or share via OneDrive/MS365.</footer>
+
+<!-- Rock modal -->
+<div class="modal-bg" id="rockModalBg">
+  <div class="modal">
+    <h3 id="rockModalTitle">New Rock</h3>
+    <input type="hidden" id="rockId">
+    <label>Rock title</label>
+    <input id="rockTitle" placeholder="e.g. Launch new client onboarding flow">
+    <label>Quarter due date (hard deadline)</label>
+    <input type="date" id="rockDue">
+    <label>Owner</label>
+    <input id="rockOwner" value="Nick">
+    <label>Notes</label>
+    <textarea id="rockNotes"></textarea>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('rockModalBg')">Cancel</button>
+      <button class="btn" onclick="saveRock()">Save Rock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Milestone modal -->
+<div class="modal-bg" id="msModalBg">
+  <div class="modal">
+    <h3>New Milestone</h3>
+    <input type="hidden" id="msRockId">
+    <input type="hidden" id="msId">
+    <label>Milestone title</label>
+    <input id="msTitle" placeholder="e.g. Define requirements">
+    <label>Due date</label>
+    <input type="date" id="msDue">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('msModalBg')">Cancel</button>
+      <button class="btn" onclick="saveMilestone()">Save Milestone</button>
+    </div>
+  </div>
+</div>
+
+<!-- Todo modal -->
+<div class="modal-bg" id="todoModalBg">
+  <div class="modal">
+    <h3 id="todoModalTitle">New To-Do</h3>
+    <input type="hidden" id="todoId">
+    <input type="hidden" id="todoRockId">
+    <input type="hidden" id="todoMsId">
+    <label>To-do title</label>
+    <input id="todoTitle" placeholder="e.g. Write project brief">
+    <label>Linked to</label>
+    <select id="todoParent"></select>
+    <label>Deadline (must be done by)</label>
+    <input type="date" id="todoDeadline">
+    <div class="hint">Defaults to 2 weeks out per your EOS to-do standard — change if it's tied to a milestone.</div>
+    <label>Estimated hours</label>
+    <input type="number" id="todoHours" value="2" min="0.5" step="0.5">
+    <div class="hint">The planner will slot this into your next available admin time with room, working backward from the deadline.</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('todoModalBg')">Cancel</button>
+      <button class="btn" onclick="saveTodo()">Save To-Do</button>
+    </div>
+  </div>
+</div>
+
+<!-- Plan sections modal -->
+<div class="modal-bg" id="planModalBg">
+  <div class="modal" style="width:560px;">
+    <h3>Map out the plan</h3>
+    <input type="hidden" id="planRockId">
+    <div class="hint" style="margin-top:-4px;">One section per line: <code>Section name | hours</code> (e.g. <code>Draft workflow doc | 3</code>). Hours default to 2 if you leave them off. Each section becomes a to-do — the planner spreads their deadlines evenly between now and the Rock's due date, then slots them into your admin days for you automatically.</div>
+    <div class="settings-row" style="margin-top:8px;">
+      <button class="btn secondary" id="btnAskClaude" onclick="askClaudeForPlan()">✨ Ask Claude to draft this</button>
+      <span id="askClaudeStatus" class="hint" style="margin:0;"></span>
+    </div>
+    <label>Sections</label>
+    <textarea id="planSections" style="min-height:180px;" placeholder="Draft workflow doc | 3
+Get team sign-off | 1
+Train staff | 4
+Roll out to production | 2"></textarea>
+    <div class="hint" id="askClaudeSetupHint" style="display:none;">"Ask Claude" needs a one-time setup: in your Netlify site's dashboard, go to Site settings → Environment variables and add <code>ANTHROPIC_API_KEY</code> (get a key at console.anthropic.com), then redeploy. Until then, just type the plan in yourself.</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('planModalBg')">Cancel</button>
+      <button class="btn" onclick="savePlanSections()">Create &amp; auto-schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-bg" id="settingsModalBg">
+  <div class="modal" style="width:560px;">
+    <h3>Settings</h3>
+    <div class="section-title" style="margin-top:0;">Admin time capacity (hours per slot)</div>
+    <div class="hint" style="margin-top:-4px;">Your admin capacity is calculated automatically from the time windows and breaks below — no need to enter hours by hand.</div>
+    <table class="slots" id="capacityPreview"><tr><th>Day</th><th>Window</th><th>Breaks</th><th>Working time</th></tr></table>
+    <div class="section-title">Quarters</div>
+    <label>Q1 start date</label>
+    <input type="date" id="fiscalQuarterStart">
+    <div class="hint" id="quarterPreview">Quarters run 3 months each from this date and roll forward automatically — no need to update this again unless your quarter dates change.</div>
+
+    <div class="section-title">Alternate Tuesday anchor</div>
+    <label>An admin Tuesday that definitely happened/will happen</label>
+    <input type="date" id="tueAnchor">
+    <div class="hint">Used to work out which Tuesdays are "admin" Tuesdays vs off-weeks.</div>
+
+    <div class="section-title">Holidays / time off</div>
+    <div class="hint" style="margin-top:-4px;">Admin slots inside these dates are skipped — tasks reschedule around them automatically.</div>
+    <div id="holidayList"></div>
+    <div class="settings-row" style="margin-top:8px;">
+      <input type="date" id="holStart" placeholder="Start">
+      <input type="date" id="holEnd" placeholder="End">
+      <input type="text" id="holLabel" placeholder="Label (optional)" style="flex:1.4;">
+      <button class="btn secondary" style="white-space:nowrap;" onclick="addHoliday()">+ Add</button>
+    </div>
+
+    <div class="section-title">To-do default deadline</div>
+    <div class="settings-row"><label>Default days until due (EOS standard)</label><input type="number" id="defaultDeadlineDays" step="1" min="1"></div>
+
+    <div class="section-title">Weekly VTO import</div>
+    <label>Only import Rocks / To-Dos owned by</label>
+    <input id="vtoOwnerFilter" placeholder="e.g. Nick — leave blank to import everyone's">
+    <div class="hint">Matches the "Owner"/"Who" column in your VTO. Case-insensitive, matches on first name.</div>
+
+    <div class="section-title">Outlook (live sync)</div>
+    <div class="hint" style="margin-top:-4px;">One-time setup: register an app in Azure AD (Microsoft Entra) as a Single-page application, add this site's URL as a redirect URI, grant it the <code>Calendars.ReadWrite</code> and <code>User.Read</code> delegated permissions, then paste the Client ID and Tenant ID below. No client secret is needed or stored.</div>
+    <label>Azure AD Application (client) ID</label>
+    <input id="msalClientId" placeholder="e.g. 3fa2b1c4-....">
+    <label>Directory (tenant) ID</label>
+    <input id="msalTenantId" placeholder="e.g. your-tenant.onmicrosoft.com or the tenant GUID">
+    <div class="settings-row" style="margin-top:10px;">
+      <button class="btn secondary" id="btnOutlookConnect" onclick="connectOutlook()">Connect Outlook</button>
+      <button class="btn secondary" id="btnOutlookDisconnect" onclick="disconnectOutlook()" style="display:none;">Disconnect</button>
+      <span id="outlookStatus" class="hint" style="margin:0;"></span>
+    </div>
+    <div class="settings-row">
+      <label>Admin day time windows</label>
+    </div>
+    <div class="settings-row"><input id="winMonStart" type="time"><span>–</span><input id="winMonEnd" type="time"><label style="flex:0;white-space:nowrap;">Mon PM</label></div>
+    <div class="settings-row"><input id="winTueStart" type="time"><span>–</span><input id="winTueEnd" type="time"><label style="flex:0;white-space:nowrap;">Tue</label></div>
+    <div class="settings-row"><input id="winThuStart" type="time"><span>–</span><input id="winThuEnd" type="time"><label style="flex:0;white-space:nowrap;">Thu</label></div>
+
+    <div class="section-title">Breaks &amp; lunch</div>
+    <div class="settings-row"><label>Two breaks per admin day, each (minutes)</label><input id="breakMinutes" type="number" step="5" min="0" style="max-width:90px;"></div>
+    <div class="settings-row"><label>Lunch break length (minutes)</label><input id="lunchMinutes" type="number" step="5" min="0" style="max-width:90px;"></div>
+    <div class="hint" style="margin-top:-4px;">Which admin days get the lunch break:</div>
+    <div class="settings-row">
+      <label style="flex:0;white-space:nowrap;"><input type="checkbox" id="lunchMon" style="width:auto;"> Mon PM</label>
+      <label style="flex:0;white-space:nowrap;"><input type="checkbox" id="lunchTue" style="width:auto;"> Tue</label>
+      <label style="flex:0;white-space:nowrap;"><input type="checkbox" id="lunchThu" style="width:auto;"> Thu</label>
+    </div>
+
+    <div class="section-title">Danger zone</div>
+    <div class="settings-row">
+      <button class="btn secondary" style="border-color:var(--risk);color:var(--risk);" onclick="resetAllData()">Reset all planner data</button>
+      <span class="hint" style="margin:0;">Wipes everything stored in this browser and starts fresh. Export to Excel first if you want a backup.</span>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('settingsModalBg')">Close</button>
+      <button class="btn" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Data model ----------
+state = {
+  settings: { adminWindows, breakMinutes, lunchMinutes, lunchDays, tueAnchor, holidays, defaultDeadlineDays },
+  rocks: [ { id, title, due, owner, notes,
+             milestones: [ { id, title, due, todos: [] } ],
+             todos: []   // rock-level todos not under a milestone
+  } ]
+}
+------------------------------------ */
+
+const LS_KEY = 'eos_planner_state_v1';
+
+function defaultState(){
+  return {
+    settings: {
+      tueAnchor: isoDate(nextWeekday(new Date(),2)), defaultDeadlineDays: 14, holidays: [],
+      msalClientId: '', msalTenantId: '',
+      vtoOwnerFilter: 'Nick',
+      adminWindows: { mon: {start:'13:00', end:'17:00'}, tue: {start:'09:00', end:'17:00'}, thu: {start:'09:00', end:'17:00'} },
+      breakMinutes: 15, lunchMinutes: 60,
+      lunchDays: { mon: false, tue: true, thu: true },
+      fiscalQuarterStart: '2026-07-01' // the day Q1 begins; quarters roll automatically from here, 3 months each
+    },
+    rocks: [],
+    outlookConflictDates: {},
+    outlookCapacityOverride: {},
+    outlookEvents: {},
+    outlookLastSync: null
+  };
+}
+
+let state = loadState();
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      const def = defaultState();
+      parsed.settings = Object.assign({}, def.settings, parsed.settings||{});
+      parsed.settings.adminWindows = Object.assign({}, def.settings.adminWindows, parsed.settings.adminWindows||{});
+      parsed.settings.lunchDays = Object.assign({}, def.settings.lunchDays, parsed.settings.lunchDays||{});
+      if(parsed.settings.breakMinutes === undefined) parsed.settings.breakMinutes = def.settings.breakMinutes;
+      if(parsed.settings.lunchMinutes === undefined) parsed.settings.lunchMinutes = def.settings.lunchMinutes;
+      if(!parsed.settings.fiscalQuarterStart) parsed.settings.fiscalQuarterStart = def.settings.fiscalQuarterStart;
+      parsed.outlookConflictDates = parsed.outlookConflictDates || {};
+      parsed.outlookCapacityOverride = parsed.outlookCapacityOverride || {};
+      parsed.outlookEvents = parsed.outlookEvents || {};
+      parsed.outlookLastSync = parsed.outlookLastSync || null;
+      return parsed;
+    }
+  }catch(e){}
+  return defaultState();
+}
+function saveState(){
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+
+function uid(){ return 'id_' + Math.random().toString(36).slice(2,10); }
+// Uses the browser's LOCAL calendar date (so it matches whatever timezone
+// you're actually in — Europe/London for you) rather than UTC. d.toISOString()
+// converts to UTC first, which silently shifts the date back by a day for
+// anyone in a positive UTC offset (e.g. UK on BST) once local time is past
+// midnight but before the UTC offset catches up — that was the bug behind
+// "today" showing as the wrong date.
+function isoDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayISO(){ const d = new Date(); d.setHours(0,0,0,0); return isoDate(d); }
+function parseISO(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function fmtDate(s){ if(!s) return '—'; const d = parseISO(s); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+function nextWeekday(from, weekday){ // weekday: 0=Sun..6=Sat
+  const d = new Date(from); d.setHours(0,0,0,0);
+  while(d.getDay() !== weekday){ d.setDate(d.getDate()+1); }
+  return d;
+}
+function addDays(d, n){ const nd = new Date(d); nd.setDate(nd.getDate()+n); return nd; }
+function addMonths(d, n){ const nd = new Date(d); nd.setMonth(nd.getMonth()+n); return nd; }
+
+/* ---------- Quarters ----------
+Q1 begins on settings.fiscalQuarterStart (default 1 Jul 2026) and every
+quarter after that is exactly 3 months — this rolls forward automatically
+with no manual switching: whichever quarter today's date falls into is
+"current", cycling Q1→Q2→Q3→Q4→Q1... forever. */
+function getQuarterInfo(dateStr){
+  const fyStart = parseISO(state.settings.fiscalQuarterStart);
+  const d = parseISO(dateStr || todayISO());
+  const monthsBetween = (d.getFullYear()-fyStart.getFullYear())*12 + (d.getMonth()-fyStart.getMonth()) - (d.getDate()<fyStart.getDate()?1:0);
+  const qIndex = Math.floor(monthsBetween/3);
+  const qStart = addMonths(fyStart, qIndex*3);
+  const qEnd = addDays(addMonths(qStart,3), -1);
+  const qNum = ((qIndex % 4) + 4) % 4 + 1;
+  return { qNum, qIndex, start: isoDate(qStart), end: isoDate(qEnd) };
+}
+function currentQuarterInfo(){ return getQuarterInfo(todayISO()); }
+function quarterLabel(q){ return `Q${q.qNum} (${fmtDate(q.start)} – ${fmtDate(q.end)})`; }
+
+/* ---------- Admin slot generation ---------- */
+// Returns sorted array of {date: 'YYYY-MM-DD', label, capacity} for next `weeksAhead` weeks starting today
+function isHoliday(dateStr){
+  const holidays = state.settings.holidays || [];
+  return holidays.some(h => dateStr >= h.start && dateStr <= h.end);
+}
+function generateSlots(weeksAhead){
+  const s = state.settings;
+  const anchor = parseISO(s.tueAnchor);
+  const slots = [];
+  const start = new Date(); start.setHours(0,0,0,0);
+  for(let i=0; i<weeksAhead*7; i++){
+    const d = addDays(start, i);
+    const dow = d.getDay();
+    const dateStr = isoDate(d);
+    if(isHoliday(dateStr)) continue;
+    const override = state.outlookCapacityOverride ? state.outlookCapacityOverride[dateStr] : undefined;
+    if(override !== undefined && override <= 0) continue; // fully booked by Outlook meetings
+    if(dow === 1){ // Monday
+      slots.push({date: dateStr, label: 'Mon PM (admin)', capacity: override!==undefined?override:capacityMinutesForDow(1)/60});
+    } else if(dow === 2){ // Tuesday - check alternate
+      const diffWeeks = Math.round((d - anchor) / (7*24*3600*1000));
+      if(diffWeeks % 2 === 0){
+        slots.push({date: dateStr, label: 'Tue (admin, alt week)', capacity: override!==undefined?override:capacityMinutesForDow(2)/60});
+      }
+    } else if(dow === 4){ // Thursday
+      slots.push({date: dateStr, label: 'Thu (admin)', capacity: override!==undefined?override:capacityMinutesForDow(4)/60});
+    }
+  }
+  return slots.filter(sl => sl.date >= todayISO());
+}
+
+/* ---------- Flatten all todos with context ---------- */
+function allTodos(){
+  const out = [];
+  state.rocks.forEach(rock => {
+    (rock.todos||[]).forEach(t => out.push({...t, rockId: rock.id, rockTitle: rock.title, msId: null, msTitle: null, hardDeadline: t.deadline || rock.due}));
+    (rock.milestones||[]).forEach(ms => {
+      (ms.todos||[]).forEach(t => out.push({...t, rockId: rock.id, rockTitle: rock.title, msId: ms.id, msTitle: ms.title, hardDeadline: t.deadline || ms.due || rock.due}));
+    });
+  });
+  return out;
+}
+
+function findTodoRef(todoId){
+  for(const rock of state.rocks){
+    for(const t of (rock.todos||[])) if(t.id===todoId) return t;
+    for(const ms of (rock.milestones||[])) for(const t of (ms.todos||[])) if(t.id===todoId) return t;
+  }
+  return null;
+}
+
+/* ---------- Auto-reschedule engine ----------
+Rules:
+- Only touches todos not marked done.
+- If scheduledDate is empty, or in the past and not done, or was flagged 'at_risk', try to (re)place it.
+- Places into the earliest admin slot (>= today) that has spare capacity, and that is on/before the todo's hard deadline.
+- If no slot with spare capacity exists before the deadline, todo is flagged 'at_risk' and left on the best-effort last slot (or unscheduled) so the user is warned but the task isn't silently lost.
+------------------------------------------------- */
+function runAutoReschedule(){
+  const slots = generateSlots(26); // look 6 months ahead
+  const ledger = {}; // date -> hours used
+  slots.forEach(sl => ledger[sl.date] = 0);
+
+  const todos = allTodos().filter(t => !t.done);
+  // Sort by hard deadline ascending so tightest deadlines get first pick of capacity
+  todos.sort((a,b) => (a.hardDeadline||'9999-99-99').localeCompare(b.hardDeadline||'9999-99-99'));
+
+  // First pass: honor existing manual/locked scheduled dates that are still valid & in future & within capacity where possible
+  todos.forEach(t => {
+    if(t.locked && t.scheduledDate && slots.find(sl=>sl.date===t.scheduledDate)){
+      ledger[t.scheduledDate] = (ledger[t.scheduledDate]||0) + (Number(t.hours)||1);
+    }
+  });
+
+  todos.forEach(t => {
+    if(t.locked) return; // already placed above
+    const deadline = t.hardDeadline || '9999-99-99';
+    const hours = Number(t.hours) || 1;
+    let placed = false;
+    for(const sl of slots){
+      if(sl.date > deadline) break; // no point looking past the deadline
+      const used = ledger[sl.date] || 0;
+      if(used + hours <= sl.capacity + 1e-9){
+        ledger[sl.date] = used + hours;
+        applyScheduling(t.id, sl.date, false);
+        placed = true;
+        break;
+      }
+    }
+    if(!placed){
+      // try to find least-bad slot before deadline (even if over capacity) just to give a date, but flag at risk
+      let fallback = null;
+      for(const sl of slots){
+        if(sl.date > deadline) break;
+        fallback = sl.date;
+      }
+      applyScheduling(t.id, fallback, true);
+    }
+  });
+  saveState();
+}
+
+function applyScheduling(todoId, date, atRisk){
+  const t = findTodoRef(todoId);
+  if(!t) return;
+  t.scheduledDate = date;
+  t.atRisk = !!atRisk;
+}
+
+/* ---------- Rendering ---------- */
+function statusTag(t){
+  if(t.done) return '<span class="tag done">DONE</span>';
+  if(t.atRisk) return '<span class="tag risk">AT RISK — won\'t make deadline</span>';
+  if(t.scheduledDate && t.scheduledDate < todayISO()) return '<span class="tag warn">OVERDUE SLOT</span>';
+  return '<span class="tag ok">ON TRACK</span>';
+}
+
+function render(){
+  runAutoReschedule();
+  renderRiskBanner();
+  renderToday();
+  renderWeek();
+  renderRocks();
+  renderGantt();
+  renderAll();
+}
+
+function renderRiskBanner(){
+  const risky = allTodos().filter(t => !t.done && t.atRisk);
+  const el = document.getElementById('riskBanner');
+  if(risky.length === 0){ el.innerHTML=''; return; }
+  el.innerHTML = `<div class="banner risk">⚠ <div><strong>${risky.length} to-do${risky.length>1?'s':''} can't be fit into your admin time before ${risky.length>1?'their':'its'} deadline.</strong><br>${risky.map(t=>`${t.title} (needs to be done by ${fmtDate(t.hardDeadline)})`).join(' · ')}</div></div>`;
+}
+
+/* ---------- Day Schedule: real 30-min time blocks ----------
+Builds the literal, minute-by-minute layout of an admin day: work broken into
+30-min chunks, your two short breaks and (where configured) lunch placed
+automatically, Outlook meetings carved out of whichever work chunks they
+overlap, and whatever's left auto-filled with your highest-priority to-dos
+(the same day-level assignment runAutoReschedule already decided — this just
+lays that day out block by block instead of as a flat list/hour total). */
+function carveOutMeetings(workBlocks, meetings){
+  let blocks = workBlocks.slice();
+  meetings.forEach(m=>{
+    const ms = timeToMin(m.start), me = timeToMin(m.end);
+    if(me<=ms) return;
+    const next = [];
+    blocks.forEach(b=>{
+      if(b.type!=='work' || me<=b.start || ms>=b.end){ next.push(b); return; }
+      if(ms>b.start) next.push({start:b.start, end:ms, type:'work'});
+      next.push({start:Math.max(ms,b.start), end:Math.min(me,b.end), type:'meeting', subject:m.subject});
+      if(me<b.end) next.push({start:me, end:b.end, type:'work'});
+    });
+    blocks = next;
+  });
+  return blocks;
+}
+
+function getDayBlocks(dateStr){
+  const d = parseISO(dateStr);
+  const dow = d.getDay();
+  if(![1,2,4].includes(dow)) return {isAdmin:false, reason:'Not an admin day.'};
+  if(isHoliday(dateStr)) return {isAdmin:false, reason:'Holiday.'};
+  if(dow===2){
+    const anchor = parseISO(state.settings.tueAnchor);
+    const diffWeeks = Math.round((d-anchor)/(7*24*3600*1000));
+    if(diffWeeks%2!==0) return {isAdmin:false, reason:'Off-week Tuesday.'};
+  }
+  const override = state.outlookCapacityOverride ? state.outlookCapacityOverride[dateStr] : undefined;
+  if(override!==undefined && override<=0) return {isAdmin:false, reason:'Fully booked in Outlook.'};
+
+  let blocks = buildDayTemplate(dow);
+  const meetings = (state.outlookEvents && state.outlookEvents[dateStr]) || [];
+  blocks = carveOutMeetings(blocks, meetings);
+
+  const chunks = [];
+  blocks.forEach(b=>{
+    if(b.type==='work'){
+      for(let t=b.start; t<b.end; t+=30) chunks.push({start:t, end:Math.min(t+30,b.end), type:'free'});
+    } else {
+      chunks.push({...b});
+    }
+  });
+
+  const todosToday = allTodos().filter(t=>!t.done && t.scheduledDate===dateStr)
+    .sort((a,b)=>(a.hardDeadline||'9999-99-99').localeCompare(b.hardDeadline||'9999-99-99'));
+
+  todosToday.forEach(t=>{
+    let neededMin = Math.round((Number(t.hours)||1)*60);
+    for(const c of chunks){
+      if(neededMin<=0) break;
+      if(c.type!=='free') continue;
+      c.type='task'; c.title=t.title; c.todoId=t.id; c.rockTitle=t.rockTitle;
+      neededMin -= (c.end-c.start);
+    }
+  });
+
+  return {isAdmin:true, dow, blocks:chunks};
+}
+
+let dayScheduleDate = null; // set on first render to the next admin day
+function pickNextAdminDate(){
+  const s = generateSlots(26);
+  return s.length ? s[0].date : todayISO();
+}
+function shiftDaySchedule(days){
+  const cur = dayScheduleDate || pickNextAdminDate();
+  dayScheduleDate = isoDate(addDays(parseISO(cur), days));
+  renderDaySchedule();
+}
+function jumpDayScheduleToNextAdmin(){
+  dayScheduleDate = pickNextAdminDate();
+  renderDaySchedule();
+}
+
+const BLOCK_STYLES = {
+  task:    {bg:'var(--accent-light)', fg:'var(--accent)', icon:'✅'},
+  break:   {bg:'var(--done-light)', fg:'var(--muted)', icon:'☕'},
+  lunch:   {bg:'var(--done-light)', fg:'var(--muted)', icon:'🍽️'},
+  meeting: {bg:'#e8eef7', fg:'#3a5a8c', icon:'🗓️'},
+  free:    {bg:'#fbfbfa', fg:'var(--muted)', icon:''}
+};
+
+function renderDaySchedule(){
+  const el = document.getElementById('view-today');
+  if(!dayScheduleDate) dayScheduleDate = pickNextAdminDate();
+  const dateStr = dayScheduleDate;
+  const d = parseISO(dateStr);
+  const dayName = d.toLocaleDateString('en-GB',{weekday:'long'});
+  const isToday = dateStr === todayISO();
+
+  let html = `<div class="toolbar">
+    <button class="btn secondary" onclick="shiftDaySchedule(-1)">← Prev day</button>
+    <button class="btn secondary" onclick="jumpDayScheduleToNextAdmin()">Next admin day</button>
+    <button class="btn secondary" onclick="shiftDaySchedule(1)">Next day →</button>
+    <span style="color:var(--muted);font-size:13px;margin-left:6px;">${dayName}, ${fmtDate(dateStr)}${isToday?' (today)':''}</span>
+  </div>`;
+
+  const result = getDayBlocks(dateStr);
+  if(!result.isAdmin){
+    html += `<div class="empty">${result.reason} No time blocks to show for this day.</div>`;
+  } else {
+    html += `<div class="card">`;
+    result.blocks.forEach(b=>{
+      const style = BLOCK_STYLES[b.type] || BLOCK_STYLES.free;
+      const timeLabel = `${minToTime(b.start)}–${minToTime(b.end)}`;
+      let label;
+      if(b.type==='task') label = `${escapeHtml(b.title)}${b.rockTitle?` <span style="color:var(--muted);font-weight:400;">(${escapeHtml(b.rockTitle)})</span>`:''}`;
+      else if(b.type==='break') label = 'Break';
+      else if(b.type==='lunch') label = 'Lunch';
+      else if(b.type==='meeting') label = escapeHtml(b.subject);
+      else label = '<span style="color:var(--muted);">Free — nothing scheduled</span>';
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${style.bg};margin-bottom:5px;">
+        <span style="font-size:11.5px;color:${style.fg};font-weight:700;min-width:100px;">${timeLabel}</span>
+        <span style="font-size:13px;">${style.icon} ${label}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<div class="section-title">Upcoming admin days</div>`;
+  html += `<table class="slots"><tr><th>Date</th><th>Slot</th><th>Load</th></tr>`;
+  generateSlots(26).slice(0,10).forEach(sl => {
+    const used = allTodos().filter(t=>!t.done && t.scheduledDate===sl.date).reduce((s,t)=>s+(Number(t.hours)||0),0);
+    const pct = sl.capacity ? Math.min(100, Math.round((used/sl.capacity)*100)) : 0;
+    html += `<tr><td><a href="#" onclick="dayScheduleDate='${sl.date}';renderDaySchedule();return false;">${fmtDate(sl.date)}</a></td><td>${sl.label}</td><td><div class="cap-bar"><div class="cap-fill ${used>sl.capacity?'over':''}" style="width:${pct}%"></div></div> <span style="color:var(--muted);font-size:11px;">${used.toFixed(1)}/${sl.capacity.toFixed(1)}h</span></td></tr>`;
+  });
+  html += `</table>`;
+  el.innerHTML = html;
+}
+function renderToday(){ renderDaySchedule(); }
+
+function todoRow(t){
+  const cls = t.done ? 'done' : (t.atRisk ? 'risk' : (t.scheduledDate && t.scheduledDate < todayISO() ? 'warn' : ''));
+  return `<div class="row-item ${cls}">
+    <div class="row-top">
+      <div>
+        <input type="checkbox" ${t.done?'checked':''} onchange="toggleDone('${t.id}', this.checked)">
+        <span class="row-title ${t.done?'done':''}">${escapeHtml(t.title)}</span>
+        <div class="meta">
+          <span>${t.rockTitle ? '🪨 '+escapeHtml(t.rockTitle) : ''}</span>
+          ${t.msTitle ? '<span>→ '+escapeHtml(t.msTitle)+'</span>' : ''}
+          <span>Due ${fmtDate(t.hardDeadline)}</span>
+          <span>Scheduled ${fmtDate(t.scheduledDate)}</span>
+          <span>${t.hours||1}h</span>
+          ${statusTag(t)}
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="icon-btn" onclick="editTodo('${t.id}','${t.rockId}','${t.msId||''}')">Edit</button>
+        <button class="icon-btn" onclick="deleteTodo('${t.id}')">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderRocks(){
+  const el = document.getElementById('view-rocks');
+  const q = currentQuarterInfo();
+  let html = `<div class="banner info" style="margin-bottom:12px;">📅 Currently <strong>Q${q.qNum}</strong>: ${fmtDate(q.start)} – ${fmtDate(q.end)}. New Rocks default to this quarter's end date automatically — it rolls to Q${q.qNum===4?1:q.qNum+1} on its own once ${fmtDate(q.end)} passes.</div>`;
+  html += `<div class="toolbar"><button class="btn" onclick="openRockModal()">+ New Rock</button></div>`;
+  if(state.rocks.length===0){
+    html += `<div class="empty">No Rocks yet. Add your quarterly Rocks to get started.</div>`;
+  }
+  state.rocks.forEach(rock => {
+    const rockTodos = allTodos().filter(t=>t.rockId===rock.id);
+    const doneCount = rockTodos.filter(t=>t.done).length;
+    const pct = rockTodos.length ? Math.round(doneCount/rockTodos.length*100) : 0;
+    html += `<div class="card${rock.done?' done':''}">
+      <div class="row-top">
+        <div>
+          <div class="row-title${rock.done?' done':''}"><input type="checkbox" ${rock.done?'checked':''} onchange="toggleRockDone('${rock.id}', this.checked)" title="Mark this Rock complete"> 🪨 ${escapeHtml(rock.title)}${rock.done?' <span class=\"tag done\">COMPLETE</span>':''}</div>
+          <div class="meta"><span>Owner: ${escapeHtml(rock.owner||'—')}</span><span>Due ${fmtDate(rock.due)}</span><span>${pct}% of to-dos complete (${doneCount}/${rockTodos.length})</span></div>
+        </div>
+        <div class="row-actions">
+          <button class="icon-btn" onclick="openRockModal('${rock.id}')">Edit</button>
+          <button class="icon-btn" onclick="deleteRock('${rock.id}')">Delete</button>
+          <button class="icon-btn" onclick="openMsModal('${rock.id}')">+ Milestone</button>
+          <button class="icon-btn" onclick="openTodoModal('${rock.id}','')">+ To-Do</button>
+          <button class="icon-btn" style="background:var(--accent-light);border-color:var(--accent);color:var(--accent);" onclick="openPlanModal('${rock.id}')">📋 Plan sections</button>
+        </div>
+      </div>`;
+    (rock.todos||[]).forEach(t => {
+      const full = allTodos().find(x=>x.id===t.id);
+      html += todoRow(full);
+    });
+    (rock.milestones||[]).forEach(ms => {
+      html += `<div class="milestone-block">
+        <div class="row-top">
+          <div><strong>🚩 ${escapeHtml(ms.title)}</strong> <span class="meta" style="display:inline;">Due ${fmtDate(ms.due)}</span></div>
+          <div class="row-actions">
+            <button class="icon-btn" onclick="deleteMilestone('${rock.id}','${ms.id}')">Delete</button>
+            <button class="icon-btn" onclick="openTodoModal('${rock.id}','${ms.id}')">+ To-Do</button>
+          </div>
+        </div>`;
+      (ms.todos||[]).forEach(t => {
+        const full = allTodos().find(x=>x.id===t.id);
+        html += todoRow(full);
+      });
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderAll(){
+  const el = document.getElementById('view-all');
+  const todos = allTodos().sort((a,b)=>(a.scheduledDate||'9999').localeCompare(b.scheduledDate||'9999'));
+  let html = `<div class="card">`;
+  if(todos.length===0) html += `<div class="empty">No to-dos yet.</div>`;
+  todos.forEach(t => html += todoRow(t));
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+/* ---------- Week View (Monday–Friday) ---------- */
+let weekOffset = 0;
+function mondayOf(d){
+  const nd = new Date(d); nd.setHours(0,0,0,0);
+  const day = nd.getDay(); // 0=Sun..6=Sat
+  const diff = day===0 ? -6 : 1-day;
+  return addDays(nd, diff);
+}
+function renderWeek(){
+  const el = document.getElementById('view-week');
+  const monday = addDays(mondayOf(new Date()), weekOffset*7);
+  const days = [0,1,2,3,4].map(i=>addDays(monday,i));
+  const adminByDow = {1:'mon', 2:'tue', 4:'thu'};
+  const settings = state.settings;
+
+  let html = `<div class="toolbar">
+    <button class="btn secondary" onclick="weekOffset--;renderWeek()">← Prev week</button>
+    <button class="btn secondary" onclick="weekOffset=0;renderWeek()">This week</button>
+    <button class="btn secondary" onclick="weekOffset++;renderWeek()">Next week →</button>
+    <span style="color:var(--muted);font-size:13px;margin-left:6px;">${fmtDate(isoDate(days[0]))} – ${fmtDate(isoDate(days[4]))}</span>
+  </div>`;
+  html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">`;
+  days.forEach(d=>{
+    const dateStr = isoDate(d);
+    const dow = d.getDay();
+    const isToday = dateStr === todayISO();
+    const dayName = d.toLocaleDateString('en-GB',{weekday:'long'});
+    const isHol = isHoliday(dateStr);
+    const override = state.outlookCapacityOverride ? state.outlookCapacityOverride[dateStr] : undefined;
+    const isOutlookFullyBusy = override !== undefined && override <= 0;
+    const baseCapacity = adminByDow[dow] ? capacityMinutesForDow(dow)/60 : 0;
+    const capacity = override !== undefined ? override : baseCapacity;
+    const todosToday = allTodos().filter(t=>t.scheduledDate===dateStr);
+    const used = todosToday.filter(t=>!t.done).reduce((s,t)=>s+(Number(t.hours)||0),0);
+    const meetings = (state.outlookEvents && state.outlookEvents[dateStr]) || [];
+
+    html += `<div class="card" style="margin-bottom:0;${isToday?'border-color:var(--accent);':''}">
+      <div style="font-weight:700;font-size:13px;${isToday?'color:var(--accent);':''}">${dayName}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${fmtDate(dateStr)}</div>`;
+    if(adminByDow[dow] === undefined){
+      html += `<div class="hint">No admin time</div>`;
+    } else if(isHol){
+      html += `<span class="tag warn">Holiday</span>`;
+    } else if(isOutlookFullyBusy){
+      html += `<span class="tag risk">Outlook busy</span><div class="hint">Fully booked — skipped for scheduling</div>`;
+    } else {
+      const pct = capacity ? Math.min(100, Math.round(used/capacity*100)) : 0;
+      html += `<span class="tag ok">Admin time</span> <span style="font-size:11px;color:var(--muted);">${used}/${capacity}h${override!==undefined?' (reduced by meetings)':''}</span>
+        <div class="cap-bar" style="width:100%;margin:6px 0;"><div class="cap-fill ${used>capacity?'over':''}" style="width:${pct}%"></div></div>`;
+    }
+    if(meetings.length){
+      html += `<div style="margin-top:6px;">` + meetings.map(m=>`<div style="font-size:11.5px;color:var(--muted);background:var(--done-light);border-radius:6px;padding:4px 7px;margin-bottom:4px;">🗓 ${m.start}–${m.end} ${escapeHtml(m.subject)}</div>`).join('') + `</div>`;
+    }
+    if(todosToday.length===0){
+      html += `<div class="hint" style="margin-top:8px;">Nothing scheduled</div>`;
+    } else {
+      todosToday.forEach(t=>{
+        const cls = t.done?'done':(t.atRisk?'risk':'');
+        html += `<div class="row-item ${cls}" style="padding:8px 10px;margin-top:8px;">
+          <input type="checkbox" ${t.done?'checked':''} onchange="toggleDone('${t.id}', this.checked)">
+          <span style="font-size:12.5px;${t.done?'text-decoration:line-through;color:var(--done);':''}">${escapeHtml(t.title)}</span>
+          <div class="meta" style="margin-top:3px;">${t.hours||1}h ${t.atRisk?'<span class=\"tag risk\">AT RISK</span>':''}</div>
+        </div>`;
+      });
+    }
+    html += `</div>`;
+  });
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+/* ---------- Project Timeline — custom visual roadmap ----------
+Replaced the old Gantt-library chart (one bar per to-do — unreadable with
+any real number of items) with a simpler swimlane roadmap: one row per Rock,
+a progress-filled bar spanning start→due, diamond markers for its
+milestones, a "today" line, and quarter boundaries shaded in — to-do level
+detail lives in Day Schedule / Week View / All To-Dos instead, where it's
+actually actionable; the timeline's job is just to show the shape of the
+quarter at a glance. */
+function rockProgress(rock){
+  if(rock.done) return 100;
+  const t = allTodos().filter(x=>x.rockId===rock.id);
+  if(!t.length) return 0;
+  return Math.round(t.filter(x=>x.done).length/t.length*100);
+}
+function earliestDateForRock(rock){
+  const dates = [];
+  (rock.milestones||[]).forEach(ms=>{ if(ms.due) dates.push(ms.due); });
+  (rock.todos||[]).forEach(t=>{ if(t.scheduledDate) dates.push(t.scheduledDate); });
+  dates.push(todayISO());
+  return dates.sort()[0];
+}
+function rockStatusColor(rock, pct){
+  if(rock.done || pct>=100) return 'var(--done)';
+  if(rock.due < todayISO()) return 'var(--risk)';
+  const rockTodos = allTodos().filter(x=>x.rockId===rock.id && !x.done);
+  if(rockTodos.some(t=>t.atRisk)) return 'var(--warn)';
+  return 'var(--accent)';
+}
+
+function renderGantt(){
+  const el = document.getElementById('view-gantt');
+  const rocks = state.rocks.filter(r=>!r.__vtoGeneral);
+  if(rocks.length===0){
+    el.innerHTML = '<div class="empty">Add Rocks to see your project timeline.</div>';
+    return;
+  }
+
+  const starts = rocks.map(r=>parseISO(earliestDateForRock(r)));
+  const ends = rocks.map(r=>parseISO(r.due||todayISO()));
+  starts.push(parseISO(todayISO()));
+  let rangeStart = new Date(Math.min(...starts));
+  let rangeEnd = new Date(Math.max(...ends, parseISO(todayISO()).getTime()+30*86400000));
+  rangeStart = addDays(rangeStart, -3);
+  rangeEnd = addDays(rangeEnd, 5);
+  const totalDays = Math.max(1, Math.round((rangeEnd-rangeStart)/86400000));
+  const pxPerDay = totalDays > 240 ? 4 : totalDays > 120 ? 6 : 9;
+  const chartWidth = totalDays * pxPerDay;
+  const dayOffset = d => Math.round((d - rangeStart)/86400000) * pxPerDay;
+
+  // month header ticks
+  let months = [];
+  let cursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+  while(cursor <= rangeEnd){
+    const next = addMonths(cursor,1);
+    const segStart = cursor < rangeStart ? rangeStart : cursor;
+    const segEnd = next > rangeEnd ? rangeEnd : next;
+    months.push({label: cursor.toLocaleDateString('en-GB',{month:'short', year:'numeric'}), left: dayOffset(segStart), width: Math.max(0, dayOffset(segEnd)-dayOffset(segStart))});
+    cursor = next;
+  }
+
+  // quarter boundaries within range
+  let qCursor = getQuarterInfo(isoDate(rangeStart));
+  let quarters = [];
+  while(parseISO(qCursor.start) <= rangeEnd){
+    quarters.push(qCursor);
+    qCursor = getQuarterInfo(isoDate(addDays(parseISO(qCursor.end),1)));
+  }
+
+  const todayX = dayOffset(parseISO(todayISO()));
+
+  let html = `<div class="legend">
+    <span><span class="dot" style="background:var(--accent)"></span>On track</span>
+    <span><span class="dot" style="background:var(--warn)"></span>Has an at-risk item</span>
+    <span><span class="dot" style="background:var(--risk)"></span>Overdue</span>
+    <span><span class="dot" style="background:var(--done)"></span>Complete</span>
+    <span><span class="dot" style="background:#c0392b;border-radius:0;width:2px;height:14px;"></span>Today</span>
+    <span>◆ Milestone</span>
+  </div>`;
+
+  html += `<div id="gantt-container" style="overflow-x:auto;">`;
+  html += `<div style="position:relative;width:${chartWidth}px;min-width:100%;">`;
+
+  // quarter shading band
+  html += `<div style="position:relative;height:22px;">`;
+  quarters.forEach((q,i)=>{
+    const left = dayOffset(parseISO(q.start) < rangeStart ? rangeStart : parseISO(q.start));
+    const right = dayOffset(parseISO(q.end) > rangeEnd ? rangeEnd : addDays(parseISO(q.end),1));
+    html += `<div style="position:absolute;left:${left}px;width:${Math.max(0,right-left)}px;top:0;bottom:0;background:${i%2===0?'#f1f0ec':'transparent'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--muted);">Q${q.qNum}</div>`;
+  });
+  html += `</div>`;
+
+  // month header
+  html += `<div style="position:relative;height:24px;border-bottom:1px solid var(--border);margin-bottom:6px;">`;
+  months.forEach(m=>{
+    html += `<div style="position:absolute;left:${m.left}px;width:${m.width}px;font-size:11.5px;font-weight:600;color:var(--muted);padding-left:4px;border-left:1px solid var(--border);height:100%;display:flex;align-items:center;">${m.label}</div>`;
+  });
+  html += `</div>`;
+
+  // rows
+  html += `<div style="position:relative;">`;
+  // today line spanning all rows
+  html += `<div style="position:absolute;left:${todayX}px;top:0;bottom:0;width:2px;background:#c0392b;z-index:5;"></div>`;
+
+  rocks.forEach(rock=>{
+    const pct = rockProgress(rock);
+    const barStart = dayOffset(parseISO(earliestDateForRock(rock)));
+    const barEnd = dayOffset(parseISO(rock.due||todayISO()));
+    const barWidth = Math.max(6, barEnd-barStart);
+    const color = rockStatusColor(rock, pct);
+
+    html += `<div style="position:relative;height:44px;border-bottom:1px solid var(--border);">
+      <div style="position:absolute;left:${barStart}px;width:${barWidth}px;top:12px;height:20px;border-radius:6px;background:${color}22;border:1.5px solid ${color};overflow:hidden;" title="${escapeHtml(rock.title)} — ${pct}% complete">
+        <div style="height:100%;width:${pct}%;background:${color};opacity:0.55;"></div>
+      </div>
+      <div style="position:absolute;left:${barStart}px;top:-2px;font-size:11.5px;font-weight:600;white-space:nowrap;color:var(--text);background:var(--bg);padding:0 4px;">🪨 ${escapeHtml(rock.title.length>50?rock.title.slice(0,50)+'…':rock.title)} <span style="color:var(--muted);font-weight:400;">${pct}%</span></div>`;
+
+    (rock.milestones||[]).forEach(ms=>{
+      if(!ms.due) return;
+      const mx = dayOffset(parseISO(ms.due));
+      const msPct = msProgressForRoadmap(ms);
+      const msColor = msPct>=100 ? 'var(--done)' : (ms.due<todayISO() ? 'var(--risk)' : 'var(--accent)');
+      html += `<div style="position:absolute;left:${mx-5}px;top:16px;width:10px;height:10px;transform:rotate(45deg);background:${msColor};border:1px solid #fff;" title="${escapeHtml(ms.title)} — due ${fmtDate(ms.due)}"></div>`;
+    });
+
+    html += `</div>`;
+  });
+  html += `</div></div></div>`;
+
+  el.innerHTML = html;
+}
+function msProgressForRoadmap(ms){
+  const t = ms.todos||[];
+  if(!t.length) return 0;
+  return Math.round(t.filter(x=>x.done).length/t.length*100);
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- CRUD actions ---------- */
+function toggleDone(todoId, val){
+  const t = findTodoRef(todoId);
+  if(t){ t.done = val; if(val){ t.atRisk=false; } }
+  saveState(); render();
+}
+function deleteTodo(todoId){
+  state.rocks.forEach(rock => {
+    rock.todos = (rock.todos||[]).filter(t=>t.id!==todoId);
+    (rock.milestones||[]).forEach(ms => ms.todos = (ms.todos||[]).filter(t=>t.id!==todoId));
+  });
+  saveState(); render();
+}
+function toggleRockDone(id, val){
+  const rock = state.rocks.find(r=>r.id===id);
+  if(rock) rock.done = val;
+  saveState(); render();
+}
+function deleteRock(id){
+  if(!confirm('Delete this Rock and everything under it?')) return;
+  state.rocks = state.rocks.filter(r=>r.id!==id);
+  saveState(); render();
+}
+function deleteMilestone(rockId, msId){
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(rock) rock.milestones = (rock.milestones||[]).filter(m=>m.id!==msId);
+  saveState(); render();
+}
+
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+function openRockModal(id){
+  document.getElementById('rockModalTitle').textContent = id ? 'Edit Rock' : 'New Rock';
+  const rock = id ? state.rocks.find(r=>r.id===id) : null;
+  document.getElementById('rockId').value = id||'';
+  document.getElementById('rockTitle').value = rock?rock.title:'';
+  document.getElementById('rockDue').value = rock ? rock.due : currentQuarterInfo().end;
+  document.getElementById('rockOwner').value = rock?rock.owner:'Nick';
+  document.getElementById('rockNotes').value = rock?rock.notes:'';
+  openModal('rockModalBg');
+}
+function saveRock(){
+  const id = document.getElementById('rockId').value;
+  const title = document.getElementById('rockTitle').value.trim();
+  const due = document.getElementById('rockDue').value;
+  const owner = document.getElementById('rockOwner').value.trim();
+  const notes = document.getElementById('rockNotes').value.trim();
+  if(!title || !due){ alert('Please enter a title and due date.'); return; }
+  if(id){
+    const rock = state.rocks.find(r=>r.id===id);
+    Object.assign(rock, {title, due, owner, notes});
+  } else {
+    state.rocks.push({id: uid(), title, due, owner, notes, milestones:[], todos:[]});
+  }
+  saveState(); closeModal('rockModalBg'); render();
+}
+
+function openMsModal(rockId){
+  document.getElementById('msRockId').value = rockId;
+  document.getElementById('msId').value = '';
+  document.getElementById('msTitle').value = '';
+  document.getElementById('msDue').value = '';
+  openModal('msModalBg');
+}
+function saveMilestone(){
+  const rockId = document.getElementById('msRockId').value;
+  const title = document.getElementById('msTitle').value.trim();
+  const due = document.getElementById('msDue').value;
+  if(!title || !due){ alert('Please enter a title and due date.'); return; }
+  const rock = state.rocks.find(r=>r.id===rockId);
+  rock.milestones = rock.milestones||[];
+  rock.milestones.push({id: uid(), title, due, todos:[]});
+  saveState(); closeModal('msModalBg'); render();
+}
+
+function openTodoModal(rockId, msId, todoId){
+  document.getElementById('todoModalTitle').textContent = todoId ? 'Edit To-Do' : 'New To-Do';
+  document.getElementById('todoId').value = todoId||'';
+  document.getElementById('todoRockId').value = rockId;
+  document.getElementById('todoMsId').value = msId||'';
+  const sel = document.getElementById('todoParent');
+  sel.innerHTML = '';
+  const rock = state.rocks.find(r=>r.id===rockId);
+  const optRock = document.createElement('option'); optRock.value=''; optRock.textContent='Rock: '+rock.title; sel.appendChild(optRock);
+  (rock.milestones||[]).forEach(ms=>{
+    const o = document.createElement('option'); o.value=ms.id; o.textContent='Milestone: '+ms.title; sel.appendChild(o);
+  });
+  sel.value = msId||'';
+  if(todoId){
+    const t = findTodoRef(todoId);
+    document.getElementById('todoTitle').value = t.title;
+    document.getElementById('todoDeadline').value = t.deadline||'';
+    document.getElementById('todoHours').value = t.hours||2;
+  } else {
+    document.getElementById('todoTitle').value = '';
+    const days = state.settings.defaultDeadlineDays || 14;
+    document.getElementById('todoDeadline').value = isoDate(addDays(new Date(), days));
+    document.getElementById('todoHours').value = 2;
+  }
+  openModal('todoModalBg');
+}
+function editTodo(todoId, rockId, msId){ openTodoModal(rockId, msId, todoId); }
+function saveTodo(){
+  const id = document.getElementById('todoId').value;
+  const rockId = document.getElementById('todoRockId').value;
+  const chosenParent = document.getElementById('todoParent').value; // '' = rock-level, else msId
+  const title = document.getElementById('todoTitle').value.trim();
+  const deadline = document.getElementById('todoDeadline').value;
+  const hours = document.getElementById('todoHours').value;
+  if(!title){ alert('Please enter a title.'); return; }
+
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(id){
+    // remove from old location first
+    rock.todos = (rock.todos||[]).filter(t=>t.id!==id);
+    let removed = null;
+    (rock.milestones||[]).forEach(ms=>{
+      const idx = (ms.todos||[]).findIndex(t=>t.id===id);
+      if(idx>-1){ removed = ms.todos.splice(idx,1)[0]; }
+    });
+  }
+  const todoObj = {id: id||uid(), title, deadline, hours, done:false, scheduledDate:null, atRisk:false};
+  if(id){
+    const old = findTodoRef(id);
+    // findTodoRef may fail now since we removed it; use a fresh object but keep done state via lookup before removal - simplified: just keep not done
+  }
+  if(chosenParent){
+    const ms = rock.milestones.find(m=>m.id===chosenParent);
+    ms.todos = ms.todos||[]; ms.todos.push(todoObj);
+  } else {
+    rock.todos = rock.todos||[]; rock.todos.push(todoObj);
+  }
+  saveState(); closeModal('todoModalBg'); render();
+}
+
+/* ---------- Plan a Rock into timed sections ----------
+Quick bulk-entry: paste a list of "Section | hours" lines and each becomes a
+rock-level to-do. Deadlines are spread evenly between today and the Rock's
+due date (so the plan naturally paces itself across the quarter rather than
+everything landing on the same date), and the auto-reschedule engine then
+slots each section into real 30-min blocks on your admin days without you
+having to place anything by hand. */
+function openPlanModal(rockId){
+  document.getElementById('planRockId').value = rockId;
+  document.getElementById('planSections').value = '';
+  document.getElementById('askClaudeStatus').textContent = '';
+  document.getElementById('askClaudeSetupHint').style.display = 'none';
+  openModal('planModalBg');
+}
+
+// Calls the Netlify serverless function (netlify/functions/plan.js), which
+// holds the Anthropic API key server-side and asks Claude to draft a
+// section-by-section plan for this Rock. The result lands in the textarea
+// as a starting point — nothing is created until you review/edit it and hit
+// "Create & auto-schedule" yourself.
+async function askClaudeForPlan(){
+  const rockId = document.getElementById('planRockId').value;
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(!rock) return;
+  const btn = document.getElementById('btnAskClaude');
+  const status = document.getElementById('askClaudeStatus');
+  document.getElementById('askClaudeSetupHint').style.display = 'none';
+  btn.disabled = true;
+  status.textContent = 'Thinking…';
+  try{
+    const resp = await fetch('/.netlify/functions/plan', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({ title: rock.title, notes: rock.notes||'', due: rock.due||'', owner: rock.owner||'' })
+    });
+    let data;
+    try{ data = await resp.json(); }catch(e){ data = null; }
+    if(!resp.ok || !data || data.error){
+      const msg = (data && data.error) || `Request failed (${resp.status})`;
+      status.textContent = '';
+      if(resp.status===404 || /ANTHROPIC_API_KEY/i.test(msg)){
+        document.getElementById('askClaudeSetupHint').style.display = 'block';
+      } else {
+        alert('Ask Claude failed: ' + msg);
+      }
+      return;
+    }
+    const existing = document.getElementById('planSections').value.trim();
+    document.getElementById('planSections').value = existing ? existing + '\n' + data.plan : data.plan;
+    status.textContent = 'Draft added — edit as needed before creating.';
+  }catch(err){
+    status.textContent = '';
+    document.getElementById('askClaudeSetupHint').style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function savePlanSections(){
+  const rockId = document.getElementById('planRockId').value;
+  const rock = state.rocks.find(r=>r.id===rockId);
+  const raw = document.getElementById('planSections').value;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length===0){ alert('Add at least one section.'); return; }
+
+  const parsed = lines.map(line=>{
+    const parts = line.split('|');
+    const title = parts[0].trim();
+    let hours = parts[1] ? parseFloat(parts[1]) : NaN;
+    if(isNaN(hours) || hours<=0) hours = 2;
+    return {title, hours};
+  }).filter(p=>p.title);
+
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const dueD = parseISO(rock.due);
+  const totalDays = Math.max(1, Math.round((dueD - todayD)/(24*3600*1000)));
+  const step = totalDays / (parsed.length + 1);
+
+  rock.todos = rock.todos || [];
+  parsed.forEach((p,i)=>{
+    const offset = Math.max(1, Math.round(step*(i+1)));
+    const deadline = isoDate(addDays(todayD, Math.min(offset, totalDays)));
+    rock.todos.push({id: uid(), title:p.title, deadline, hours:p.hours, done:false, scheduledDate:null, atRisk:false});
+  });
+
+  saveState(); closeModal('planModalBg'); render();
+  alert(`Added ${parsed.length} section(s) to "${rock.title}" and auto-scheduled them into your admin days.`);
+}
+
+/* ---------- Settings ---------- */
+function openSettings(){
+  document.getElementById('fiscalQuarterStart').value = state.settings.fiscalQuarterStart;
+  renderQuarterPreview();
+  document.getElementById('tueAnchor').value = state.settings.tueAnchor;
+  document.getElementById('defaultDeadlineDays').value = state.settings.defaultDeadlineDays || 14;
+  document.getElementById('vtoOwnerFilter').value = state.settings.vtoOwnerFilter || '';
+  document.getElementById('msalClientId').value = state.settings.msalClientId || '';
+  document.getElementById('msalTenantId').value = state.settings.msalTenantId || '';
+  const w = state.settings.adminWindows;
+  document.getElementById('winMonStart').value = w.mon.start; document.getElementById('winMonEnd').value = w.mon.end;
+  document.getElementById('winTueStart').value = w.tue.start; document.getElementById('winTueEnd').value = w.tue.end;
+  document.getElementById('winThuStart').value = w.thu.start; document.getElementById('winThuEnd').value = w.thu.end;
+  document.getElementById('breakMinutes').value = state.settings.breakMinutes;
+  document.getElementById('lunchMinutes').value = state.settings.lunchMinutes;
+  document.getElementById('lunchMon').checked = !!state.settings.lunchDays.mon;
+  document.getElementById('lunchTue').checked = !!state.settings.lunchDays.tue;
+  document.getElementById('lunchThu').checked = !!state.settings.lunchDays.thu;
+  renderHolidayList();
+  renderCapacityPreview();
+  updateOutlookStatusUI();
+  openModal('settingsModalBg');
+}
+// Reads straight from the (possibly unsaved) Settings form fields, so the
+// preview updates live as you type rather than only after hitting Save.
+function renderQuarterPreview(){
+  const el = document.getElementById('quarterPreview');
+  if(!el) return;
+  const val = document.getElementById('fiscalQuarterStart').value;
+  if(!val){ el.textContent = 'Quarters run 3 months each from this date and roll forward automatically.'; return; }
+  const savedAnchor = state.settings.fiscalQuarterStart;
+  state.settings.fiscalQuarterStart = val; // temporarily, just to compute the preview
+  const q = currentQuarterInfo();
+  state.settings.fiscalQuarterStart = savedAnchor;
+  el.textContent = `Today would fall in Q${q.qNum}: ${fmtDate(q.start)} – ${fmtDate(q.end)}. Rolls forward automatically after that.`;
+}
+function renderCapacityPreview(){
+  const el = document.getElementById('capacityPreview');
+  if(!el) return;
+  const breakMin = Number(document.getElementById('breakMinutes').value)||0;
+  const lunchMin = Number(document.getElementById('lunchMinutes').value)||0;
+  const days = [
+    {dow:1, label:'Mon PM', startId:'winMonStart', endId:'winMonEnd', lunchId:'lunchMon'},
+    {dow:2, label:'Tue (alt weeks)', startId:'winTueStart', endId:'winTueEnd', lunchId:'lunchTue'},
+    {dow:4, label:'Thu', startId:'winThuStart', endId:'winThuEnd', lunchId:'lunchThu'}
+  ];
+  const rows = days.map(d=>{
+    const start = document.getElementById(d.startId).value || '09:00';
+    const end = document.getElementById(d.endId).value || '17:00';
+    const includeLunch = document.getElementById(d.lunchId).checked;
+    const totalMin = Math.max(0, timeToMin(end) - timeToMin(start));
+    const breakTotal = breakMin*2 + (includeLunch?lunchMin:0);
+    const workMin = Math.max(0, totalMin - breakTotal);
+    const h = Math.floor(workMin/60), m = workMin%60;
+    const breakTxt = includeLunch ? `2×${breakMin}min + ${lunchMin}min lunch` : `2×${breakMin}min`;
+    return `<tr><td>${d.label}</td><td>${start}–${end}</td><td>${breakTxt}</td><td>${h}h ${m}m</td></tr>`;
+  }).join('');
+  el.innerHTML = '<tr><th>Day</th><th>Window</th><th>Breaks</th><th>Working time</th></tr>' + rows;
+}
+function renderHolidayList(){
+  const el = document.getElementById('holidayList');
+  const hols = state.settings.holidays || [];
+  if(hols.length===0){ el.innerHTML = '<div class="hint">No holidays added yet.</div>'; return; }
+  el.innerHTML = hols.map((h,i)=>`<div class="settings-row"><span style="flex:1;">${fmtDate(h.start)} → ${fmtDate(h.end)} ${h.label?('— '+escapeHtml(h.label)):''}</span><button class="icon-btn" onclick="removeHoliday(${i})">Remove</button></div>`).join('');
+}
+function addHoliday(){
+  const start = document.getElementById('holStart').value;
+  const end = document.getElementById('holEnd').value;
+  const label = document.getElementById('holLabel').value.trim();
+  if(!start || !end){ alert('Pick a start and end date.'); return; }
+  state.settings.holidays = state.settings.holidays || [];
+  state.settings.holidays.push({start, end: end<start?start:end, label});
+  state.settings.holidays.sort((a,b)=>a.start.localeCompare(b.start));
+  document.getElementById('holStart').value=''; document.getElementById('holEnd').value=''; document.getElementById('holLabel').value='';
+  renderHolidayList();
+}
+function removeHoliday(i){
+  state.settings.holidays.splice(i,1);
+  renderHolidayList();
+}
+function resetAllData(){
+  if(!confirm('This clears everything stored in this browser for the planner (Rocks, To-Dos, holidays, Outlook connection) and cannot be undone. Export to Excel first if you want a backup. Continue?')) return;
+  localStorage.removeItem(LS_KEY);
+  state = defaultState();
+  msalAccount = null;
+  saveState();
+  closeModal('settingsModalBg');
+  render();
+  alert('Planner reset. Re-run Weekly VTO Update or Import from Excel to bring your data back in.');
+}
+function saveSettings(){
+  state.settings.fiscalQuarterStart = document.getElementById('fiscalQuarterStart').value || state.settings.fiscalQuarterStart;
+  state.settings.tueAnchor = document.getElementById('tueAnchor').value;
+  state.settings.defaultDeadlineDays = Number(document.getElementById('defaultDeadlineDays').value)||14;
+  state.settings.vtoOwnerFilter = document.getElementById('vtoOwnerFilter').value.trim();
+  state.settings.msalClientId = document.getElementById('msalClientId').value.trim();
+  state.settings.msalTenantId = document.getElementById('msalTenantId').value.trim();
+  state.settings.breakMinutes = Number(document.getElementById('breakMinutes').value)||0;
+  state.settings.lunchMinutes = Number(document.getElementById('lunchMinutes').value)||0;
+  state.settings.lunchDays = {
+    mon: document.getElementById('lunchMon').checked,
+    tue: document.getElementById('lunchTue').checked,
+    thu: document.getElementById('lunchThu').checked
+  };
+  state.settings.adminWindows = {
+    mon: {start:document.getElementById('winMonStart').value||'13:00', end:document.getElementById('winMonEnd').value||'17:00'},
+    tue: {start:document.getElementById('winTueStart').value||'09:00', end:document.getElementById('winTueEnd').value||'17:00'},
+    thu: {start:document.getElementById('winThuStart').value||'09:00', end:document.getElementById('winThuEnd').value||'17:00'}
+  };
+  saveState(); closeModal('settingsModalBg'); render();
+  msalInstance = null; // force re-init with any new client/tenant ID next connect
+}
+
+/* ---------- Excel import/export ---------- */
+function exportExcel(){
+  const rocksRows = [];
+  const todosRows = [];
+  state.rocks.forEach(rock=>{
+    rocksRows.push({Type:'Rock', ID:rock.id, Title:rock.title, Owner:rock.owner, Due:rock.due, Done:rock.done?'Yes':'No', Notes:rock.notes||''});
+    (rock.milestones||[]).forEach(ms=>{
+      rocksRows.push({Type:'Milestone', ID:ms.id, Title:ms.title, Owner:'', Due:ms.due, Notes:'ParentRock:'+rock.id});
+    });
+  });
+  allTodos().forEach(t=>{
+    todosRows.push({
+      ID:t.id, Title:t.title, RockID:t.rockId, RockTitle:t.rockTitle, MilestoneID:t.msId||'', MilestoneTitle:t.msTitle||'',
+      Deadline:t.hardDeadline, Hours:t.hours, Done:t.done?'Yes':'No', ScheduledDate:t.scheduledDate||'', AtRisk:t.atRisk?'Yes':'No'
+    });
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rocksRows), 'Rocks & Milestones');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(todosRows), 'To-Dos');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.settings]), 'Settings');
+  XLSX.writeFile(wb, 'EOS_Planner_' + todayISO() + '.xlsx');
+}
+
+function importExcel(file){
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellStyles:true});
+      // hidden rows/columns are skipped (someone may have hidden a completed Rock etc. rather than deleted it)
+      const rmSheet = visibleSheetToObjects(wb.Sheets['Rocks & Milestones']);
+      const tdSheet = visibleSheetToObjects(wb.Sheets['To-Dos']);
+      const settingsSheet = visibleSheetToObjects(wb.Sheets['Settings']);
+
+      const newRocks = {};
+      rmSheet.filter(r=>r.Type==='Rock').forEach(r=>{
+        newRocks[r.ID] = {id:r.ID, title:r.Title, owner:r.Owner, due:r.Due, done: String(r.Done||'').toLowerCase()==='yes', notes:r.Notes||'', milestones:[], todos:[]};
+      });
+      rmSheet.filter(r=>r.Type==='Milestone').forEach(r=>{
+        const parentId = (r.Notes||'').replace('ParentRock:','');
+        if(newRocks[parentId]) newRocks[parentId].milestones.push({id:r.ID, title:r.Title, due:r.Due, todos:[]});
+      });
+      tdSheet.forEach(t=>{
+        const todoObj = {id:t.ID, title:t.Title, deadline:t.Deadline, hours:t.Hours, done:t.Done==='Yes', scheduledDate:t.ScheduledDate||null, atRisk:false};
+        const rock = newRocks[t.RockID];
+        if(!rock) return;
+        if(t.MilestoneID){
+          const ms = rock.milestones.find(m=>m.id===t.MilestoneID);
+          if(ms){ ms.todos.push(todoObj); }
+        } else {
+          rock.todos.push(todoObj);
+        }
+      });
+      state.rocks = Object.values(newRocks);
+      if(settingsSheet[0]){
+        state.settings.tueAnchor = settingsSheet[0].tueAnchor||state.settings.tueAnchor;
+        if(settingsSheet[0].breakMinutes!==undefined) state.settings.breakMinutes = Number(settingsSheet[0].breakMinutes)||state.settings.breakMinutes;
+        if(settingsSheet[0].lunchMinutes!==undefined) state.settings.lunchMinutes = Number(settingsSheet[0].lunchMinutes)||state.settings.lunchMinutes;
+      }
+      saveState(); render();
+      alert('Import complete.');
+    }catch(err){
+      alert('Could not read that file. Make sure it was exported from this planner.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- Weekly VTO import (lenient parser) ----------
+Your VTO workbook layout will vary sheet to sheet, so this scans every sheet
+for a header row that looks like a Rocks table (columns for Rock/Title, Who/Owner, Due)
+and a header row that looks like a To-Do list (To-Do/Action, Who/Owner, Due), then
+reads rows underneath until a blank row. It MERGES by title (case-insensitive) rather
+than replacing everything, so hand-edits made inside this app aren't lost — re-uploading
+the same VTO each week just refreshes owners/dates and adds anything new.
+--------------------------------------------------------------------------- */
+function getVisibleAOA(sheet){
+  // Reads a worksheet into a 2D array, skipping any row or column marked
+  // hidden in Excel — hidden helper/status columns and archived/hidden rows
+  // in a real VTO workbook shouldn't be picked up by the importer.
+  if(!sheet || !sheet['!ref']) return [];
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  const rowsMeta = sheet['!rows'] || [];
+  const colsMeta = sheet['!cols'] || [];
+  const out = [];
+  for(let R = range.s.r; R <= range.e.r; R++){
+    if(rowsMeta[R] && rowsMeta[R].hidden) continue;
+    const rowArr = [];
+    for(let C = range.s.c; C <= range.e.c; C++){
+      if(colsMeta[C] && colsMeta[C].hidden) continue;
+      const cellRef = XLSX.utils.encode_cell({r:R, c:C});
+      const cell = sheet[cellRef];
+      rowArr.push(cell ? cell.v : undefined);
+    }
+    out.push(rowArr);
+  }
+  return out;
+}
+function visibleSheetToObjects(sheet){
+  // Same idea as getVisibleAOA but returns header-keyed row objects, like
+  // sheet_to_json, while still skipping hidden rows/columns.
+  const aoa = getVisibleAOA(sheet);
+  if(aoa.length === 0) return [];
+  const headers = aoa[0].map(h=>String(h===undefined?'':h).trim());
+  return aoa.slice(1)
+    .filter(row => row.some(v => v !== undefined && String(v).trim() !== ''))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h,i)=>{ if(h) obj[h] = row[i]; });
+      return obj;
+    });
+}
+function parseCellDate(v){
+  if(v === undefined || v === null || v === '') return null;
+  if(v instanceof Date && !isNaN(v)) return isoDate(v);
+  if(typeof v === 'number'){ // excel serial date fallback
+    const d = XLSX.SSF ? XLSX.SSF.parse_date_code(v) : null;
+    if(d) return isoDate(new Date(d.y, d.m-1, d.d));
+  }
+  if(typeof v === 'string'){
+    const d = new Date(v);
+    if(!isNaN(d)) return isoDate(d);
+  }
+  return null;
+}
+function findCol(headerRow, patterns){
+  for(let i=0;i<headerRow.length;i++){
+    const cell = String(headerRow[i]||'').trim().toLowerCase();
+    if(!cell) continue;
+    if(patterns.some(p=>p.test(cell))) return i;
+  }
+  return -1;
+}
+function scanSheetForTable(rows, titlePatterns, ownerPatterns, duePatterns){
+  const results = [];
+  for(let r=0; r<rows.length; r++){
+    const row = rows[r] || [];
+    const titleCol = findCol(row, titlePatterns);
+    if(titleCol === -1) continue;
+    const ownerCol = findCol(row, ownerPatterns);
+    const dueCol = findCol(row, duePatterns);
+    // header candidate found — read rows below until blank
+    let rr = r+1;
+    let found = 0;
+    while(rr < rows.length){
+      const dataRow = rows[rr] || [];
+      const titleVal = dataRow[titleCol];
+      if(titleVal === undefined || String(titleVal).trim() === ''){
+        if(found>0) break; // stop at blank row after we've started collecting
+        rr++; continue;
+      }
+      results.push({
+        title: String(titleVal).trim(),
+        owner: ownerCol>-1 ? String(dataRow[ownerCol]||'').trim() : '',
+        due: dueCol>-1 ? parseCellDate(dataRow[dueCol]) : null
+      });
+      found++;
+      rr++;
+    }
+    if(found>0) r = rr; // skip past this table
+  }
+  return results;
+}
+
+function findOrCreateGeneralRock(){
+  let rock = state.rocks.find(r=>r.__vtoGeneral);
+  if(!rock){
+    rock = {id: uid(), title:'VTO To-Dos', owner:'', due: currentQuarterInfo().end, notes:'General to-dos from the weekly VTO that aren\'t tied to a specific Rock.', milestones:[], todos:[], __vtoGeneral:true};
+    state.rocks.push(rock);
+  }
+  return rock;
+}
+
+function mergeVtoRocks(rockEntries){
+  rockEntries.forEach(entry=>{
+    const noteBits = [];
+    if(entry.type) noteBits.push(entry.type);
+    if(entry.status) noteBits.push('Latest status: ' + entry.status);
+    const notes = noteBits.join(' — ') || 'Added from weekly VTO import.';
+    let rock = state.rocks.find(r=>!r.__vtoGeneral && r.title.trim().toLowerCase()===entry.title.toLowerCase());
+    if(rock){
+      if(entry.owner) rock.owner = entry.owner;
+      if(entry.due) rock.due = entry.due;
+      rock.notes = notes;
+    } else {
+      state.rocks.push({id: uid(), title: entry.title, owner: entry.owner||'Nick', due: entry.due || currentQuarterInfo().end, notes, milestones:[], todos:[]});
+    }
+  });
+}
+
+function mergeVtoTodos(todoEntries){
+  // The visible rows in your VTO ARE the current truth for this bucket — a
+  // row you've hidden in Excel means "no longer current", so each weekly
+  // update REPLACES the "VTO To-Dos" list wholesale rather than only ever
+  // adding to it. Otherwise anything you archive/hide in the spreadsheet
+  // would keep piling up here forever. To-dos that live under a real Rock
+  // (matched by title) are still just updated in place, not touched here.
+  const general = findOrCreateGeneralRock();
+  const days = state.settings.defaultDeadlineDays || 14;
+  const oldByTitle = {};
+  (general.todos||[]).forEach(t => { oldByTitle[t.title.trim().toLowerCase()] = t; });
+
+  const freshGeneralTodos = [];
+  todoEntries.forEach(entry=>{
+    const key = entry.title.trim().toLowerCase();
+    // if this title also exists under a real Rock, update that one instead of duplicating here
+    const rockTodo = allTodos().find(t => t.rockId !== general.id && t.title.trim().toLowerCase()===key);
+    if(rockTodo){
+      const ref = findTodoRef(rockTodo.id);
+      if(entry.due) ref.deadline = entry.due;
+      if(entry.done) ref.done = true;
+      return;
+    }
+    const prior = oldByTitle[key];
+    freshGeneralTodos.push({
+      id: prior ? prior.id : uid(),
+      title: entry.title,
+      deadline: entry.due || (prior ? prior.deadline : isoDate(addDays(new Date(),days))),
+      hours: prior ? prior.hours : 2,
+      done: !!entry.done || (prior ? !!prior.done : false),
+      scheduledDate: prior ? prior.scheduledDate : null,
+      atRisk: false
+    });
+  });
+  general.todos = freshGeneralTodos;
+}
+
+/* ---------- Structure-aware readers for your actual VTO layout ----------
+Your TODOs tab: columns TODO | Owner | Raised | Week One | Week Two | Result.
+You archive a to-do by hiding its row once it's been reviewed rather than
+deleting it — so ONLY visible rows are read here (getVisibleAOA already
+drops hidden rows and hidden columns). "Week Two" is treated as the real
+deadline (falling back to "Week One" if that's blank), and "Result" marks
+it done if it says anything containing "done".
+------------------------------------------------------------------------- */
+function parseTodosSheet(sheet){
+  const rows = getVisibleAOA(sheet);
+  if(rows.length < 2) return [];
+  const headers = rows[0].map(h=>String(h===undefined?'':h).trim().toLowerCase());
+  const findCol = patterns => headers.findIndex(h=>patterns.some(p=>p.test(h)));
+  const titleCol = findCol([/^todo$/, /to.?do/, /^title$/]);
+  const ownerCol = findCol([/owner/, /who/]);
+  const week1Col = findCol([/week\s*one/, /week\s*1/]);
+  const week2Col = findCol([/week\s*two/, /week\s*2/]);
+  const resultCol = findCol([/result/, /status/]);
+  if(titleCol === -1) return [];
+  const out = [];
+  rows.slice(1).forEach(row=>{
+    const titleVal = row[titleCol];
+    if(titleVal === undefined || String(titleVal).trim() === '') return;
+    const due = (week2Col>-1 && parseCellDate(row[week2Col])) || (week1Col>-1 && parseCellDate(row[week1Col])) || null;
+    const resultText = resultCol>-1 ? String(row[resultCol]||'').toLowerCase() : '';
+    out.push({
+      title: String(titleVal).trim(),
+      owner: ownerCol>-1 ? String(row[ownerCol]||'').trim() : '',
+      due,
+      done: resultText.includes('done')
+    });
+  });
+  return out;
+}
+
+/* Your Q1 Rocks tab: col A=#, B=Goal/Issue type, C=description(title), D=owner,
+   then one column per week (E onward) with a date in row 1 and a status
+   ("ON TRACK"/"OFF TRACK"/"DONE"/typos thereof) underneath. Past weeks get
+   hidden as columns rather than deleted, so — same rule — hidden columns
+   are skipped. The Rock's due date is read from the header of the
+   right-most visible week-column that actually has a status in it (i.e.
+   its latest real check-in), and that same status is kept as a note. */
+function parseRocksSheet(sheet){
+  if(!sheet || !sheet['!ref']) return [];
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  const rowsMeta = sheet['!rows'] || [];
+  const colsMeta = sheet['!cols'] || [];
+  const getCell = (r,c) => { const cell = sheet[XLSX.utils.encode_cell({r,c})]; return cell ? cell.v : undefined; };
+  const out = [];
+  for(let r = range.s.r+1; r <= range.e.r; r++){
+    if(rowsMeta[r] && rowsMeta[r].hidden) continue;
+    const title = getCell(r,2); // col C
+    if(title === undefined || String(title).trim() === '') continue;
+    const type = getCell(r,1);   // col B
+    const owner = getCell(r,3);  // col D
+    let due = null, status = null;
+    for(let c = range.e.c; c >= 4; c--){ // col E onward, scanning right-to-left for the latest entry
+      if(colsMeta[c] && colsMeta[c].hidden) continue;
+      const v = getCell(r,c);
+      if(v !== undefined && String(v).trim() !== ''){
+        status = String(v).trim();
+        const headerDate = parseCellDate(getCell(range.s.r, c));
+        if(headerDate) due = headerDate;
+        break;
+      }
+    }
+    out.push({ title: String(title).trim(), owner: owner?String(owner).trim():'', type: type?String(type).trim():'', due, status });
+  }
+  return out;
+}
+
+function importVto(file){
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      // cellStyles:true is required for SheetJS to populate row/column hidden
+      // flags at all — without it, getVisibleAOA()/parseRocksSheet() would
+      // see every row as visible even when Excel's XML clearly marks them hidden.
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true, cellStyles:true});
+      const todoSheetName = wb.SheetNames.find(n=>/to.?do/i.test(n));
+      const rockSheetName = wb.SheetNames.find(n=>/rock/i.test(n));
+
+      let rockEntries = [];
+      let todoEntries = [];
+
+      if(rockSheetName){
+        rockEntries = parseRocksSheet(wb.Sheets[rockSheetName]);
+      }
+      if(todoSheetName){
+        todoEntries = parseTodosSheet(wb.Sheets[todoSheetName]);
+      }
+
+      // Fallback to a generic header-guessing scan only if we couldn't find
+      // sheets that match your actual tab names/layout.
+      if(rockEntries.length===0 && todoEntries.length===0){
+        wb.SheetNames.forEach(name=>{
+          const rows = getVisibleAOA(wb.Sheets[name]);
+          rockEntries = rockEntries.concat(scanSheetForTable(rows, [/^rock/i, /^title$/i], [/who/i, /owner/i], [/due/i, /date/i]));
+          todoEntries = todoEntries.concat(scanSheetForTable(rows, [/to.?do/i, /action item/i], [/who/i, /owner/i], [/due/i, /date/i]));
+        });
+      }
+
+      if(rockEntries.length===0 && todoEntries.length===0){
+        alert('Couldn\'t find a Rocks or To-Do table in that file. You can still use "Import from Excel (full backup)" if this was exported from the planner itself.');
+        return;
+      }
+
+      const ownerFilter = (state.settings.vtoOwnerFilter||'').trim().toLowerCase();
+      const totalRockRows = rockEntries.length, totalTodoRows = todoEntries.length;
+      if(ownerFilter){
+        rockEntries = rockEntries.filter(r => (r.owner||'').toLowerCase().includes(ownerFilter));
+        todoEntries = todoEntries.filter(t => (t.owner||'').toLowerCase().includes(ownerFilter));
+      }
+
+      if(rockEntries.length > 0 || todoEntries.length > 0){
+        state.rocks = state.rocks.filter(r=>!r.__seed); // clear the placeholder example once real data arrives
+      }
+      mergeVtoRocks(rockEntries);
+      mergeVtoTodos(todoEntries);
+      saveState(); render();
+      const filterNote = ownerFilter ? ` (filtered to "${state.settings.vtoOwnerFilter}" — ${totalRockRows-rockEntries.length} Rock row(s) and ${totalTodoRows-todoEntries.length} To-Do row(s) from others were skipped)` : '';
+      alert(`VTO update applied: ${rockEntries.length} visible Rock row(s), ${todoEntries.length} visible To-Do row(s)${filterNote}.`);
+    }catch(err){
+      alert('Could not read that VTO file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- Outlook live sync (MSAL.js + Microsoft Graph) ----------
+Runs entirely in the browser as a Single-Page App (Authorization Code + PKCE,
+no client secret). Requires a one-time Azure AD app registration by the user
+(see hint text in Settings). Two directions:
+  1. checkOutlookConflicts() reads the user's real Outlook calendar and marks
+     any admin slot that overlaps a busy event as unavailable — the auto-
+     reschedule engine then naturally skips it, same as a holiday.
+  2. pushEventsToOutlook() writes/updates a calendar event per admin slot
+     that has to-dos scheduled on it, tagged with an "[EOS Planner]" subject
+     prefix so re-syncs update the same event instead of duplicating.
+---------------------------------------------------------------------- */
+const GRAPH_SCOPES = ['User.Read', 'Calendars.ReadWrite'];
+let msalInstance = null;
+let msalAccount = null;
+
+function getMsalInstance(){
+  if(!state.settings.msalClientId) return null;
+  if(msalInstance) return msalInstance;
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: state.settings.msalClientId,
+      authority: 'https://login.microsoftonline.com/' + (state.settings.msalTenantId || 'common'),
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: 'localStorage' }
+  });
+  return msalInstance;
+}
+
+async function connectOutlook(){
+  const client = getMsalInstance();
+  if(!client){ alert('Enter your Azure AD Client ID (and Tenant ID) above first, then Save Settings, then Connect.'); return; }
+  try{
+    await client.initialize();
+    const result = await client.loginPopup({ scopes: GRAPH_SCOPES });
+    msalAccount = result.account;
+    client.setActiveAccount(msalAccount);
+    updateOutlookStatusUI();
+    await syncOutlookNow();
+  }catch(err){
+    alert('Could not connect to Outlook: ' + err.message);
+  }
+}
+function disconnectOutlook(){
+  const client = getMsalInstance();
+  if(client && msalAccount){ client.logoutPopup({account: msalAccount}); }
+  msalAccount = null;
+  state.outlookConflictDates = {};
+  state.outlookCapacityOverride = {};
+  state.outlookEvents = {};
+  saveState();
+  updateOutlookStatusUI();
+  render();
+}
+function updateOutlookStatusUI(){
+  const statusEl = document.getElementById('outlookStatus');
+  const connectBtn = document.getElementById('btnOutlookConnect');
+  const disconnectBtn = document.getElementById('btnOutlookDisconnect');
+  if(!statusEl) return;
+  const client = getMsalInstance();
+  const account = client ? (msalAccount || (client.getAllAccounts()[0])) : null;
+  const headerSyncBtn = document.getElementById('btnSyncOutlook');
+  if(account){
+    msalAccount = account;
+    statusEl.textContent = 'Connected as ' + (account.username || account.name) + (state.outlookLastSync ? (' · last synced ' + new Date(state.outlookLastSync).toLocaleString('en-GB')) : '');
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = 'inline-block';
+    if(headerSyncBtn) headerSyncBtn.style.display = 'inline-block';
+  } else {
+    statusEl.textContent = 'Not connected.';
+    connectBtn.style.display = 'inline-block';
+    disconnectBtn.style.display = 'none';
+    if(headerSyncBtn) headerSyncBtn.style.display = 'none';
+  }
+}
+
+async function getGraphToken(){
+  const client = getMsalInstance();
+  if(!client) return null;
+  await client.initialize();
+  const account = msalAccount || client.getAllAccounts()[0];
+  if(!account) return null;
+  try{
+    const r = await client.acquireTokenSilent({ scopes: GRAPH_SCOPES, account });
+    return r.accessToken;
+  }catch(e){
+    try{
+      const r = await client.acquireTokenPopup({ scopes: GRAPH_SCOPES, account });
+      return r.accessToken;
+    }catch(e2){ return null; }
+  }
+}
+
+function windowForDow(dow){ // 1=Mon,2=Tue,4=Thu
+  const w = state.settings.adminWindows;
+  if(dow===1) return w.mon; if(dow===2) return w.tue; if(dow===4) return w.thu; return {start:'09:00',end:'17:00'};
+}
+function lunchDayKeyForDow(dow){ return dow===1?'mon':dow===2?'tue':dow===4?'thu':null; }
+function includesLunchForDow(dow){
+  const key = lunchDayKeyForDow(dow);
+  return key ? !!state.settings.lunchDays[key] : false;
+}
+function timeToMin(hhmm){ const [h,m] = (hhmm||'09:00').split(':').map(Number); return h*60+(m||0); }
+function minToTime(min){ const h = Math.floor(min/60), m = Math.round(min%60); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
+
+// Total working minutes available in an admin day, after subtracting the two
+// short breaks and (where applicable) lunch — this is the single source of
+// truth for capacity, so there's nothing to keep in sync by hand.
+function capacityMinutesForDow(dow){
+  const win = windowForDow(dow);
+  const totalMin = timeToMin(win.end) - timeToMin(win.start);
+  const includeLunch = includesLunchForDow(dow);
+  const breakTotal = (state.settings.breakMinutes||0) * 2 + (includeLunch ? (state.settings.lunchMinutes||0) : 0);
+  return Math.max(0, totalMin - breakTotal);
+}
+
+// Builds the ordered skeleton of a working day: alternating work segments and
+// break/lunch blocks, spread evenly across the window (e.g. work, break,
+// work, lunch, work, break, work). Times are in minutes-since-midnight.
+function buildDayTemplate(dow){
+  const win = windowForDow(dow);
+  const startMin = timeToMin(win.start), endMin = timeToMin(win.end);
+  const totalMin = Math.max(0, endMin - startMin);
+  const includeLunch = includesLunchForDow(dow);
+  const breakLen = state.settings.breakMinutes||0;
+  const lunchLen = includeLunch ? (state.settings.lunchMinutes||0) : 0;
+  const breakDefs = includeLunch ? [breakLen, lunchLen, breakLen] : [breakLen, breakLen];
+  const totalBreakMin = breakDefs.reduce((a,b)=>a+b,0);
+  const workMin = totalMin - totalBreakMin;
+  if(workMin <= 0){
+    // window too short for the configured breaks — just one work block, no breaks
+    return totalMin>0 ? [{start:startMin, end:endMin, type:'work'}] : [];
+  }
+  const segments = breakDefs.length + 1;
+  const blocks = [];
+  let cursor = startMin;
+  let workMinPlaced = 0;
+  for(let i=0;i<segments;i++){
+    const isLast = i===segments-1;
+    let segLen = isLast ? (workMin - workMinPlaced) : Math.round((workMin/segments)/30)*30;
+    if(segLen < 0) segLen = 0;
+    if(segLen > 0){
+      blocks.push({start:cursor, end:cursor+segLen, type:'work'});
+      cursor += segLen; workMinPlaced += segLen;
+    }
+    if(i < breakDefs.length && breakDefs[i] > 0){
+      const len = breakDefs[i];
+      const isLunch = includeLunch && i===1; // breakDefs is always [break, lunch, break] when includeLunch
+      blocks.push({start:cursor, end:cursor+len, type: isLunch ? 'lunch' : 'break'});
+      cursor += len;
+    }
+  }
+  return blocks;
+}
+
+// Raw admin-day dates from the Mon/alt-Tue/Thu pattern, before any Outlook
+// adjustment is applied (used so we know which dates to even check).
+function rawAdminSlots(weeksAhead){
+  const s = state.settings;
+  const anchor = parseISO(s.tueAnchor);
+  const slots = [];
+  const start = new Date(); start.setHours(0,0,0,0);
+  for(let i=0; i<weeksAhead*7; i++){
+    const d = addDays(start, i);
+    const dow = d.getDay();
+    const dateStr = isoDate(d);
+    if(isHoliday(dateStr)) continue;
+    if(dow === 1) slots.push({date: dateStr, label: 'Mon PM (admin)', capacity: capacityMinutesForDow(1)/60});
+    else if(dow === 2){
+      const diffWeeks = Math.round((d - anchor) / (7*24*3600*1000));
+      if(diffWeeks % 2 === 0) slots.push({date: dateStr, label: 'Tue (admin, alt week)', capacity: capacityMinutesForDow(2)/60});
+    } else if(dow === 4) slots.push({date: dateStr, label: 'Thu (admin)', capacity: capacityMinutesForDow(4)/60});
+  }
+  return slots.filter(sl => sl.date >= todayISO());
+}
+
+async function checkOutlookConflicts(){
+  const token = await getGraphToken();
+  if(!token) return;
+  const rangeStart = new Date(); rangeStart.setHours(0,0,0,0);
+  const rangeEnd = addDays(rangeStart, 182); // ~26 weeks ahead, matches scheduling horizon
+  const url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${rangeStart.toISOString()}&endDateTime=${rangeEnd.toISOString()}&$select=subject,start,end,showAs&$top=999`;
+  let events = [];
+  try{
+    let next = url;
+    while(next){
+      const resp = await fetch(next, { headers: { Authorization: 'Bearer ' + token, Prefer: 'outlook.timezone="Europe/London"' } });
+      if(!resp.ok) break;
+      const data = await resp.json();
+      events = events.concat(data.value || []);
+      next = data['@odata.nextLink'];
+    }
+  }catch(e){ return; }
+
+  const busy = events.filter(ev => ev.showAs !== 'free' && !(ev.subject||'').startsWith('[EOS Planner]'));
+
+  // Group every busy event by its local calendar date, so the day/week views
+  // can show "here's what's already on, so this is why nothing's scheduled here".
+  const eventsByDate = {};
+  busy.forEach(ev => {
+    const dateStr = (ev.start.dateTime || '').slice(0,10);
+    if(!dateStr) return;
+    (eventsByDate[dateStr] = eventsByDate[dateStr]||[]).push({
+      subject: ev.subject || '(no title)',
+      start: (ev.start.dateTime||'').slice(11,16),
+      end: (ev.end.dateTime||'').slice(11,16)
+    });
+  });
+  Object.values(eventsByDate).forEach(list => list.sort((a,b)=>a.start.localeCompare(b.start)));
+  state.outlookEvents = eventsByDate;
+
+  // For each admin day, reduce (not just wipe) its capacity by however many
+  // hours of that admin window are already taken by a meeting — a meeting
+  // shows up on the day and simply leaves less room for to-dos, rather than
+  // blanking the whole slot unless it's genuinely fully booked.
+  const overrides = {};
+  rawAdminSlots(26).forEach(sl => {
+    const d = parseISO(sl.date);
+    const win = windowForDow(d.getDay());
+    const slotStart = new Date(sl.date + 'T' + win.start + ':00');
+    const slotEnd = new Date(sl.date + 'T' + win.end + ':00');
+    let overlapHours = 0;
+    (eventsByDate[sl.date]||[]).forEach(ev => {
+      const es = new Date(sl.date + 'T' + ev.start + ':00');
+      const ee = new Date(sl.date + 'T' + ev.end + ':00');
+      const overlapMs = Math.min(ee, slotEnd) - Math.max(es, slotStart);
+      if(overlapMs > 0) overlapHours += overlapMs / 3600000;
+    });
+    if(overlapHours > 0){
+      overrides[sl.date] = Math.max(0, +(sl.capacity - overlapHours).toFixed(2));
+    }
+  });
+  state.outlookCapacityOverride = overrides;
+  // kept for anywhere that still just needs "is this day fully blocked"
+  state.outlookConflictDates = Object.fromEntries(Object.entries(overrides).filter(([,cap])=>cap<=0).map(([d])=>[d,true]));
+}
+
+async function pushEventsToOutlook(){
+  const token = await getGraphToken();
+  if(!token) return;
+  const slots = generateSlots(26);
+  const todos = allTodos().filter(t=>!t.done && t.scheduledDate);
+  const byDate = {};
+  todos.forEach(t => { (byDate[t.scheduledDate] = byDate[t.scheduledDate]||[]).push(t); });
+
+  for(const sl of slots){
+    const items = byDate[sl.date];
+    if(!items || items.length===0) continue;
+    const d = parseISO(sl.date);
+    const win = windowForDow(d.getDay());
+    const subject = '[EOS Planner] ' + sl.label;
+    const body = items.map(t=>'• ' + t.title + (t.rockTitle?(' ('+t.rockTitle+')'):'')).join('\n');
+    try{
+      // find an existing event for this date with our subject prefix
+      const searchUrl = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${sl.date}T00:00:00&endDateTime=${sl.date}T23:59:59&$filter=startswith(subject,'[EOS Planner]')`;
+      const searchResp = await fetch(searchUrl, { headers: { Authorization: 'Bearer ' + token, Prefer: 'outlook.timezone="Europe/London"' } });
+      const searchData = searchResp.ok ? await searchResp.json() : {value:[]};
+      const existing = (searchData.value||[])[0];
+      const payload = {
+        subject,
+        body: { contentType: 'Text', content: body },
+        start: { dateTime: `${sl.date}T${win.start}:00`, timeZone: 'Europe/London' },
+        end: { dateTime: `${sl.date}T${win.end}:00`, timeZone: 'Europe/London' }
+      };
+      if(existing){
+        await fetch(`https://graph.microsoft.com/v1.0/me/events/${existing.id}`, {
+          method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+      } else {
+        await fetch('https://graph.microsoft.com/v1.0/me/events', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+      }
+    }catch(e){ /* skip this slot, continue with the rest */ }
+  }
+}
+
+async function syncOutlookNow(){
+  const statusEl = document.getElementById('outlookStatus');
+  if(statusEl) statusEl.textContent = 'Syncing…';
+  await checkOutlookConflicts();
+  render(); // reschedule with fresh conflicts before pushing, so Outlook reflects the real plan
+  await pushEventsToOutlook();
+  state.outlookLastSync = new Date().toISOString();
+  saveState();
+  updateOutlookStatusUI();
+}
+
+/* ---------- Nav & wiring ---------- */
+document.querySelectorAll('.navbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.style.display='none');
+    document.getElementById('view-'+btn.dataset.view).style.display='block';
+    if(btn.dataset.view==='gantt') setTimeout(renderGantt,10);
+    if(btn.dataset.view==='week') renderWeek();
+  });
+});
+document.getElementById('btnExport').addEventListener('click', exportExcel);
+document.getElementById('fileImport').addEventListener('change', (e)=>{
+  if(e.target.files[0]) importExcel(e.target.files[0]);
+  e.target.value='';
+});
+document.getElementById('fileVtoImport').addEventListener('change', (e)=>{
+  if(e.target.files[0]) importVto(e.target.files[0]);
+  e.target.value='';
+});
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+['winMonStart','winMonEnd','winTueStart','winTueEnd','winThuStart','winThuEnd','breakMinutes','lunchMinutes','lunchMon','lunchTue','lunchThu'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('input', renderCapacityPreview);
+});
+document.getElementById('fiscalQuarterStart').addEventListener('input', renderQuarterPreview);
+
+/* ---------- Seed example data on first run ---------- */
+if(state.rocks.length===0){
+  const rockId = uid();
+  const msId = uid();
+  const qEnd = currentQuarterInfo().end;
+  state.rocks.push({
+    id: rockId, title: 'Example Rock — replace with your own', owner:'Nick', due: qEnd, notes:'Delete this once you\'ve added your real Rocks.',
+    milestones: [{id: msId, title:'Example milestone', due: isoDate(addDays(new Date(),21)), todos:[
+      {id: uid(), title:'Example to-do', deadline: isoDate(addDays(new Date(),14)), hours:2, done:false, scheduledDate:null, atRisk:false}
+    ]}],
+    todos: [], __seed:true
+  });
+  saveState();
+}
+
+render();
+
+/* Pick up an already-connected Outlook session on reload, if one exists */
+(async function bootstrapOutlook(){
+  if(!state.settings.msalClientId) return;
+  try{
+    const client = getMsalInstance();
+    await client.initialize();
+    await client.handleRedirectPromise();
+    const accounts = client.getAllAccounts();
+    if(accounts.length){ msalAccount = accounts[0]; client.setActiveAccount(msalAccount); updateOutlookStatusUI(); }
+  }catch(e){ /* not connected yet, ignore */ }
+})();
+</script>
+</body>
+</html>
