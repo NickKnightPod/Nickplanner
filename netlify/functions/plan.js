@@ -39,7 +39,7 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing Rock title' }) };
   }
 
-  const model = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
+  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
   const prompt = `You are helping a small business owner break a quarterly EOS "Rock" (a goal/project) into a short, practical list of timed work sections he can schedule into his calendar.
 
