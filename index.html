@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EOS Planner — Rocks, To-Dos &amp; Projects</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f4f">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EOS Planner">
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -25,6 +30,16 @@
   nav{display:flex;gap:6px;padding:10px 24px 0;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap;}
   nav button{background:none;border:none;padding:10px 14px;font-size:13.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-weight:600;}
   nav button.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .search-wrap{position:relative;margin-left:auto;align-self:center;margin-bottom:8px;}
+  .search-wrap input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;width:230px;background:#fff;}
+  .search-wrap input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .search-results{position:absolute;top:calc(100% + 4px);right:0;width:380px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:50;}
+  .search-result-item{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .search-result-item:last-child{border-bottom:none;}
+  .search-result-item:hover{background:var(--bg);}
+  .search-result-title{font-weight:600;font-size:13.5px;}
+  .search-result-meta{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .search-result-empty{padding:14px;color:var(--muted);font-size:13px;}
   main{max-width:1200px;margin:0 auto;padding:20px 24px 80px;}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
   .btn{background:var(--accent);color:#fff;border:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
@@ -116,6 +131,9 @@
   .mini-todo-pill{font-size:14px;flex-shrink:0;}
   .mini-todo-title.done{text-decoration:line-through;color:var(--muted);}
   .mini-todo-risk{background:var(--risk);color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:auto;}
+  .board-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .board-toolbar select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;}
+  .cat-pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;border:1px solid;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -138,6 +156,7 @@
     </label>
     <button class="btn secondary" id="btnSettings">⚙ Settings</button>
     <button class="btn ghost" id="btnSyncOutlook" onclick="syncOutlookNow()" style="display:none;">🔄 Sync Outlook</button>
+    <button class="btn secondary" id="btnInstallApp" onclick="installApp()" style="display:none;">📲 Install app</button>
   </div>
 </header>
 
@@ -148,10 +167,15 @@
   <button class="navbtn" data-view="rocks">Rocks &amp; To-Dos</button>
   <button class="navbtn" data-view="gantt">Project Timeline</button>
   <button class="navbtn" data-view="all">All To-Dos</button>
+  <div class="search-wrap">
+    <input type="text" id="globalSearch" placeholder="🔍 Search Rocks &amp; to-dos…" autocomplete="off">
+    <div id="searchResults" class="search-results" style="display:none;"></div>
+  </div>
 </nav>
 
 <main>
   <div id="riskBanner"></div>
+  <div id="backupReminder"></div>
 
   <div id="view-board" class="view"></div>
   <div id="view-today" class="view" style="display:none;"></div>
@@ -174,6 +198,15 @@
     <input type="date" id="rockDue">
     <label>Owner</label>
     <input id="rockOwner" value="Nick">
+    <label>Category</label>
+    <select id="rockCategory">
+      <option value="">No category</option>
+      <option value="clinical">🩺 Clinical</option>
+      <option value="admin">🗂 Admin</option>
+      <option value="marketing">📣 Marketing</option>
+      <option value="finance">💷 Finance</option>
+      <option value="people">👥 People</option>
+    </select>
     <label>Notes</label>
     <textarea id="rockNotes" placeholder="A few lines on what this Rock is about — the more detail here, the better Claude's draft plan will be if you use the button below."></textarea>
     <div class="hint" id="rockAskClaudeStatus" style="margin-top:2px;"></div>
@@ -319,6 +352,10 @@ Roll out to production | 2"></textarea>
     <div class="hint" style="margin-top:-4px;">Added from the Day Schedule view for a specific day — this is just a full list for review/cleanup. 🚧 Blocked time reduces that day's capacity; ➕ Ad-hoc availability adds a one-off slot on an otherwise non-admin day.</div>
     <div id="dayAdjustList"></div>
 
+    <div class="section-title">Local backups</div>
+    <div class="hint" style="margin-top:-4px;">Everything lives only in this browser's storage — a snapshot is taken automatically the first time you use the planner each day, so you can roll back or download a copy if something goes wrong. For a portable copy you can keep anywhere, use "Export to Excel" instead.</div>
+    <div id="backupList"></div>
+
     <div class="section-title">To-do default deadline</div>
     <div class="settings-row"><label>Default days until due (EOS standard)</label><input type="number" id="defaultDeadlineDays" step="1" min="1"></div>
 
@@ -396,7 +433,8 @@ function defaultState(){
     outlookConflictDates: {},
     outlookCapacityOverride: {},
     outlookEvents: {},
-    outlookLastSync: null
+    outlookLastSync: null,
+    lastExcelExportAt: null
   };
 }
 
@@ -418,6 +456,7 @@ function loadState(){
       parsed.outlookCapacityOverride = parsed.outlookCapacityOverride || {};
       parsed.outlookEvents = parsed.outlookEvents || {};
       parsed.outlookLastSync = parsed.outlookLastSync || null;
+      parsed.lastExcelExportAt = parsed.lastExcelExportAt || null;
       return parsed;
     }
   }catch(e){}
@@ -425,6 +464,70 @@ function loadState(){
 }
 function saveState(){
   localStorage.setItem(LS_KEY, JSON.stringify(state));
+  snapshotDailyBackup();
+}
+
+/* ---------- Local backup safety net ----------
+Since everything lives only in this browser's storage, a cleared browser,
+new device, or accidental "Reset all planner data" would otherwise mean
+total loss. This keeps one rolling snapshot per day (the state as it was the
+first time the app saved that day — i.e. effectively "yesterday going into
+today") for up to 30 days, entirely separate from the live data, so there's
+always a recent point to roll back to even if nothing was manually exported.
+This is a safety net against LOSING everything, not an undo button for a
+single edit — the delete confirmations cover that instead. */
+const BACKUP_KEY = 'eos_planner_backups_v1';
+const MAX_BACKUPS = 30;
+function loadBackups(){
+  try{
+    const raw = localStorage.getItem(BACKUP_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function snapshotDailyBackup(){
+  try{
+    const backups = loadBackups();
+    const today = todayISO();
+    if(backups.length && backups[backups.length-1].date === today) return; // already snapshotted today
+    backups.push({date: today, json: JSON.stringify(state)});
+    while(backups.length > MAX_BACKUPS) backups.shift();
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(backups));
+  }catch(e){ /* storage full/unavailable — best-effort, never block a normal save over this */ }
+}
+function restoreBackup(date){
+  const b = loadBackups().find(x=>x.date===date);
+  if(!b) return;
+  if(!confirm(`Restore the planner to how it was on ${fmtDate(date)}? Your CURRENT data will be replaced — export to Excel first if you want to keep it too. This can't be undone.`)) return;
+  try{
+    const restored = JSON.parse(b.json);
+    localStorage.setItem(LS_KEY, b.json);
+    state = restored;
+    closeModal('settingsModalBg');
+    render();
+    alert('Restored to ' + fmtDate(date) + '.');
+  }catch(e){
+    alert('Could not restore that backup: ' + e.message);
+  }
+}
+function downloadBackup(date){
+  const b = loadBackups().find(x=>x.date===date);
+  if(!b) return;
+  const blob = new Blob([b.json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `EOS_Planner_backup_${date}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function renderBackupList(){
+  const el = document.getElementById('backupList');
+  if(!el) return;
+  const backups = loadBackups().slice().reverse();
+  if(backups.length===0){ el.innerHTML = '<div class="hint">No backups yet — one is taken automatically each day you use the planner.</div>'; return; }
+  el.innerHTML = backups.map(b=>`<div class="settings-row"><span style="flex:1;">${fmtDate(b.date)}</span>
+    <button class="icon-btn" onclick="downloadBackup('${b.date}')">Download</button>
+    <button class="icon-btn" onclick="restoreBackup('${b.date}')">Restore</button>
+  </div>`).join('');
 }
 
 function uid(){ return 'id_' + Math.random().toString(36).slice(2,10); }
@@ -721,6 +824,7 @@ function statusTag(t){
 function render(){
   runAutoReschedule();
   renderRiskBanner();
+  renderBackupReminder();
   renderBoard();
   renderToday();
   renderWeek();
@@ -758,6 +862,19 @@ function rockDerivedStatus(rock){
 }
 function rockBoardStatus(rock){ return rock.boardStatus || rockDerivedStatus(rock); }
 function rockRiskCount(rock){ return rockTodosFlat(rock).filter(t=>!t.done && t.atRisk).length; }
+const ROCK_CATEGORIES = {
+  clinical: {label:'Clinical', icon:'🩺', color:'#0e9f6e'},
+  admin: {label:'Admin', icon:'🗂', color:'#3a7fc4'},
+  marketing: {label:'Marketing', icon:'📣', color:'#d97706'},
+  finance: {label:'Finance', icon:'💷', color:'#7c3aed'},
+  people: {label:'People', icon:'👥', color:'#db2777'}
+};
+function categoryPill(rock){
+  const cat = ROCK_CATEGORIES[rock.category];
+  if(!cat) return '';
+  return `<span class="cat-pill" style="background:${cat.color}22;color:${cat.color};border-color:${cat.color}55;">${cat.icon} ${cat.label}</span>`;
+}
+let boardCategoryFilter = ''; // transient — not persisted
 function rockCounts(rock){
   const todos = rockTodosFlat(rock);
   const total = todos.length;
@@ -814,9 +931,14 @@ function renderBoard(){
     {key:'done', label:'Done', icon:'✅'}
   ];
   let html = `<div class="board-hint">Drag a project card between columns to update its status, or click a card to expand its sections and tick them off one by one.</div>`;
+  html += `<div class="board-toolbar"><label style="font-size:12.5px;color:var(--muted);font-weight:600;">Filter by category</label>
+    <select id="boardCatFilter" onchange="boardCategoryFilter=this.value;renderBoard();">
+      <option value=""${boardCategoryFilter===''?' selected':''}>All categories</option>
+      ${Object.entries(ROCK_CATEGORIES).map(([key,c])=>`<option value="${key}"${boardCategoryFilter===key?' selected':''}>${c.icon} ${c.label}</option>`).join('')}
+    </select></div>`;
   html += `<div class="board">`;
   cols.forEach(col=>{
-    const colRocks = state.rocks.filter(r => rockBoardStatus(r) === col.key);
+    const colRocks = state.rocks.filter(r => rockBoardStatus(r) === col.key && (!boardCategoryFilter || r.category===boardCategoryFilter));
     html += `<div class="board-col" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleBoardDrop(event,'${col.key}')">`;
     html += `<div class="board-col-header">${col.icon} ${col.label}<span class="board-col-count">${colRocks.length}</span></div>`;
     html += `<div class="board-col-body">`;
@@ -826,12 +948,14 @@ function renderBoard(){
       const riskCount = rockRiskCount(rock);
       const pct = counts.total ? Math.round((counts.done/counts.total)*100) : 0;
       const expanded = boardExpanded.has(rock.id);
-      html += `<div class="rock-card status-${col.key}" draggable="true" ondragstart="handleBoardDragStart(event,'${rock.id}')">
+      const cat = ROCK_CATEGORIES[rock.category];
+      html += `<div class="rock-card status-${col.key}" draggable="true" ondragstart="handleBoardDragStart(event,'${rock.id}')" style="${cat?`border-left-color:${cat.color};`:''}">
         <div class="rock-card-top" onclick="toggleBoardExpand('${rock.id}')">
           <div class="rock-card-title">${rock.__vtoGeneral?'🗒️':'🪨'} ${escapeHtml(rock.title)}</div>
           <div class="rock-card-expand">${expanded?'▾':'▸'}</div>
         </div>
         <div class="rock-card-meta">${escapeHtml(rock.owner||'—')} · Due ${fmtDate(rock.due)}</div>
+        ${categoryPill(rock)}
         ${riskCount>0 ? `<div class="rock-card-risk">⚠ ${riskCount} at risk</div>` : ''}
         ${counts.total>0
           ? `<div class="mini-progress"><div class="mini-progress-fill" style="width:${pct}%"></div></div><div class="rock-card-count">${counts.done}/${counts.total} done${counts.doing?` · ${counts.doing} in progress`:''}</div>`
@@ -865,6 +989,27 @@ function renderRiskBanner(){
   const el = document.getElementById('riskBanner');
   if(risky.length === 0){ el.innerHTML=''; return; }
   el.innerHTML = `<div class="banner risk">⚠ <div><strong>${risky.length} to-do${risky.length>1?'s':''} can't be fit into your admin time before ${risky.length>1?'their':'its'} deadline.</strong><br>${risky.map(t=>`${t.title} (needs to be done by ${fmtDate(t.hardDeadline)})`).join(' · ')}</div></div>`;
+}
+
+// Nudges toward "Export to Excel" as the portable, take-it-anywhere backup —
+// local browser storage (and even the automatic daily snapshots) all live in
+// this one browser, so it's worth surfacing a gentle reminder rather than
+// relying on the user to remember to export on their own.
+const BACKUP_REMINDER_DAYS = 14;
+function renderBackupReminder(){
+  const el = document.getElementById('backupReminder');
+  if(!el) return;
+  if(!state.rocks || state.rocks.length === 0){ el.innerHTML=''; return; } // nothing worth backing up yet
+  const last = state.lastExcelExportAt;
+  let daysSince = null;
+  if(last){
+    daysSince = Math.round((parseISO(todayISO()) - parseISO(last)) / 86400000);
+  }
+  if(last && daysSince < BACKUP_REMINDER_DAYS){ el.innerHTML=''; return; }
+  const msg = last
+    ? `It's been ${daysSince} days since your last Excel export (${fmtDate(last)}).`
+    : `You haven't exported a backup yet.`;
+  el.innerHTML = `<div class="banner" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;">💾 <div><strong>${msg}</strong> Everything here only lives in this browser — export a copy for safekeeping. <button class="btn secondary" style="margin-left:8px;" onclick="exportExcel()">Export to Excel</button></div></div>`;
 }
 
 /* ---------- Day Schedule: real 30-min time blocks ----------
@@ -1066,7 +1211,7 @@ function renderToday(){ renderDaySchedule(); }
 
 function todoRow(t){
   const cls = t.done ? 'done' : (t.atRisk ? 'risk' : (t.scheduledDate && t.scheduledDate < todayISO() ? 'warn' : ''));
-  return `<div class="row-item ${cls}">
+  return `<div class="row-item ${cls}" id="todo-${t.id}">
     <div class="row-top">
       <div>
         <input type="checkbox" ${t.done?'checked':''} onchange="toggleDone('${t.id}', this.checked)">
@@ -1143,10 +1288,10 @@ function renderRocks(){
     const doneCount = rockTodos.filter(t=>t.done).length;
     const pct = rockTodos.length ? Math.round(doneCount/rockTodos.length*100) : 0;
     const collapsed = isRockCollapsed(rock);
-    html += `<div class="card${rock.done?' done':''}">
+    html += `<div class="card${rock.done?' done':''}" id="rock-${rock.id}">
       <div class="row-top">
         <div>
-          <div class="row-title${rock.done?' done':''}"><input type="checkbox" ${rock.done?'checked':''} onchange="toggleRockDone('${rock.id}', this.checked)" title="Mark this Rock complete"> 🪨 ${escapeHtml(rock.title)}${rock.done?' <span class=\"tag done\">COMPLETE</span>':''}</div>
+          <div class="row-title${rock.done?' done':''}"><input type="checkbox" ${rock.done?'checked':''} onchange="toggleRockDone('${rock.id}', this.checked)" title="Mark this Rock complete"> 🪨 ${escapeHtml(rock.title)}${rock.done?' <span class=\"tag done\">COMPLETE</span>':''} ${categoryPill(rock)}</div>
           <div class="meta"><span>Owner: ${escapeHtml(rock.owner||'—')}</span><span>Due ${fmtDate(rock.due)}</span><span>${pct}% of to-dos complete (${doneCount}/${rockTodos.length})</span></div>
         </div>
         <div class="row-actions">
@@ -1208,6 +1353,7 @@ function renderWeek(){
     <button class="btn secondary" onclick="weekOffset=0;renderWeek()">This week</button>
     <button class="btn secondary" onclick="weekOffset++;renderWeek()">Next week →</button>
     <span style="color:var(--muted);font-size:13px;margin-left:6px;">${fmtDate(isoDate(days[0]))} – ${fmtDate(isoDate(days[4]))}</span>
+    <button class="btn secondary" style="margin-left:auto;" onclick="printWeekView()">🖨 Print / Save PDF</button>
   </div>`;
   html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">`;
   days.forEach(d=>{
@@ -1257,6 +1403,72 @@ function renderWeek(){
   });
   html += `</div>`;
   el.innerHTML = html;
+}
+
+// Builds a clean, minimal one-page "week ahead" summary in a new window and
+// triggers the browser's print dialog — from there "Save as PDF" gives a
+// portable copy. Kept as a completely separate, simplified render (no drag
+// handles, no edit buttons, no colour-coded status bars) rather than trying
+// to print the live Week View, since the on-screen layout is optimised for
+// interaction, not for a printed page.
+function printWeekView(){
+  const monday = addDays(mondayOf(new Date()), weekOffset*7);
+  const days = [0,1,2,3,4].map(i=>addDays(monday,i));
+  const adminByDow = {1:'mon', 2:'tue', 4:'thu'};
+  let body = `<h1>Week ahead: ${fmtDate(isoDate(days[0]))} – ${fmtDate(isoDate(days[4]))}</h1>`;
+  body += `<div class="week-grid">`;
+  days.forEach(d=>{
+    const dateStr = isoDate(d);
+    const dow = d.getDay();
+    const dayName = d.toLocaleDateString('en-GB',{weekday:'long'});
+    const isHol = isHoliday(dateStr);
+    const todosToday = allTodos().filter(t=>t.scheduledDate===dateStr && !t.done);
+    const meetings = (state.outlookEvents && state.outlookEvents[dateStr]) || [];
+    body += `<div class="day-col"><h2>${dayName}<br><span class="date">${fmtDate(dateStr)}</span></h2>`;
+    if(adminByDow[dow]===undefined){
+      body += `<div class="note">No admin time</div>`;
+    } else if(isHol){
+      body += `<div class="note">Holiday</div>`;
+    } else {
+      body += `<div class="note admin">Admin time</div>`;
+    }
+    if(meetings.length){
+      body += meetings.map(m=>`<div class="meeting">🗓 ${m.start}–${m.end} ${escapeHtml(m.subject)}</div>`).join('');
+    }
+    if(todosToday.length===0){
+      body += `<div class="empty-note">—</div>`;
+    } else {
+      body += `<ul>` + todosToday.map(t=>`<li><span class="box"></span>${escapeHtml(t.title)}${t.rockTitle?` <span class="src">(${escapeHtml(t.rockTitle)})</span>`:''} — ${t.hours||1}h</li>`).join('') + `</ul>`;
+    }
+    body += `</div>`;
+  });
+  body += `</div>`;
+  const risky = allTodos().filter(t=>!t.done && t.atRisk);
+  if(risky.length){
+    body += `<div class="risk-note"><strong>⚠ At risk:</strong> ${risky.map(t=>escapeHtml(t.title)).join(', ')}</div>`;
+  }
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Week ahead — ${fmtDate(isoDate(days[0]))}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:24px;}
+    h1{font-size:19px;margin-bottom:16px;}
+    .week-grid{display:flex;gap:0;border-top:2px solid #222;}
+    .day-col{flex:1;border-right:1px solid #ccc;padding:8px 10px;min-height:260px;}
+    .day-col:last-child{border-right:none;}
+    .day-col h2{font-size:12.5px;margin:0 0 8px;}
+    .day-col h2 .date{font-weight:400;color:#666;font-size:11px;}
+    .note{font-size:10.5px;font-weight:700;color:#666;margin-bottom:6px;}
+    .note.admin{color:#0e7a4d;}
+    .meeting{font-size:10px;color:#555;background:#f2f2f2;border-radius:4px;padding:3px 6px;margin-bottom:4px;}
+    ul{list-style:none;margin:6px 0 0;padding:0;}
+    li{font-size:11px;margin-bottom:7px;line-height:1.4;}
+    .box{display:inline-block;width:9px;height:9px;border:1px solid #333;margin-right:6px;vertical-align:middle;}
+    .src{color:#888;}
+    .empty-note{font-size:10.5px;color:#aaa;margin-top:6px;}
+    .risk-note{margin-top:18px;font-size:11px;color:#a33;border-top:1px solid #ccc;padding-top:10px;}
+    @media print{ body{margin:8mm;} }
+  </style></head><body>${body}</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.focus(); w.print(); }, 300);
 }
 
 /* ---------- Project Timeline — custom visual roadmap ----------
@@ -1408,6 +1620,8 @@ function toggleDone(todoId, val){
   saveState(); render();
 }
 function deleteTodo(todoId){
+  const t = findTodoRef(todoId);
+  if(!confirm(`Delete "${t ? t.title : 'this to-do'}"? This can't be undone.`)) return;
   state.rocks.forEach(rock => {
     rock.todos = (rock.todos||[]).filter(t=>t.id!==todoId);
     (rock.milestones||[]).forEach(ms => ms.todos = (ms.todos||[]).filter(t=>t.id!==todoId));
@@ -1420,12 +1634,19 @@ function toggleRockDone(id, val){
   saveState(); render();
 }
 function deleteRock(id){
-  if(!confirm('Delete this Rock and everything under it?')) return;
+  const rock = state.rocks.find(r=>r.id===id);
+  const todoCount = rock ? rockTodosFlat(rock).length : 0;
+  const warn = todoCount ? ` It has ${todoCount} to-do${todoCount>1?'s':''} under it — ${todoCount>1?'they':'it'} will be deleted too.` : '';
+  if(!confirm(`Delete "${rock ? rock.title : 'this Rock'}"?${warn} This can't be undone.`)) return;
   state.rocks = state.rocks.filter(r=>r.id!==id);
   saveState(); render();
 }
 function deleteMilestone(rockId, msId){
   const rock = state.rocks.find(r=>r.id===rockId);
+  const ms = rock ? (rock.milestones||[]).find(m=>m.id===msId) : null;
+  const todoCount = ms ? (ms.todos||[]).length : 0;
+  const warn = todoCount ? ` Its ${todoCount} to-do${todoCount>1?'s':''} will be deleted too.` : '';
+  if(!confirm(`Delete milestone "${ms ? ms.title : ''}"?${warn} This can't be undone.`)) return;
   if(rock) rock.milestones = (rock.milestones||[]).filter(m=>m.id!==msId);
   saveState(); render();
 }
@@ -1440,6 +1661,7 @@ function openRockModal(id){
   document.getElementById('rockTitle').value = rock?rock.title:'';
   document.getElementById('rockDue').value = rock ? rock.due : currentQuarterInfo().end;
   document.getElementById('rockOwner').value = rock?rock.owner:'Nick';
+  document.getElementById('rockCategory').value = rock ? (rock.category||'') : '';
   document.getElementById('rockNotes').value = rock?rock.notes:'';
   openModal('rockModalBg');
 }
@@ -1451,15 +1673,16 @@ function persistRockFromModal(){
   const title = document.getElementById('rockTitle').value.trim();
   const due = document.getElementById('rockDue').value;
   const owner = document.getElementById('rockOwner').value.trim();
+  const category = document.getElementById('rockCategory').value;
   const notes = document.getElementById('rockNotes').value.trim();
   if(!title || !due){ alert('Please enter a title and due date.'); return null; }
   let rockId = id;
   if(id){
     const rock = state.rocks.find(r=>r.id===id);
-    Object.assign(rock, {title, due, owner, notes});
+    Object.assign(rock, {title, due, owner, category, notes});
   } else {
     rockId = uid();
-    state.rocks.push({id: rockId, title, due, owner, notes, milestones:[], todos:[]});
+    state.rocks.push({id: rockId, title, due, owner, category, notes, milestones:[], todos:[]});
   }
   saveState(); render();
   return rockId;
@@ -1820,6 +2043,7 @@ function openSettings(){
   renderDayAdjustList();
   renderCapacityPreview();
   updateOutlookStatusUI();
+  renderBackupList();
   openModal('settingsModalBg');
 }
 // Reads straight from the (possibly unsaved) Settings form fields, so the
@@ -1927,7 +2151,7 @@ function exportExcel(){
   const rocksRows = [];
   const todosRows = [];
   state.rocks.forEach(rock=>{
-    rocksRows.push({Type:'Rock', ID:rock.id, Title:rock.title, Owner:rock.owner, Due:rock.due, Done:rock.done?'Yes':'No', Notes:rock.notes||''});
+    rocksRows.push({Type:'Rock', ID:rock.id, Title:rock.title, Owner:rock.owner, Category:rock.category||'', Due:rock.due, Done:rock.done?'Yes':'No', Notes:rock.notes||''});
     (rock.milestones||[]).forEach(ms=>{
       rocksRows.push({Type:'Milestone', ID:ms.id, Title:ms.title, Owner:'', Due:ms.due, Notes:'ParentRock:'+rock.id});
     });
@@ -1943,6 +2167,9 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(todosRows), 'To-Dos');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.settings]), 'Settings');
   XLSX.writeFile(wb, 'EOS_Planner_' + todayISO() + '.xlsx');
+  state.lastExcelExportAt = todayISO();
+  saveState();
+  renderBackupReminder();
 }
 
 function importExcel(file){
@@ -1957,7 +2184,7 @@ function importExcel(file){
 
       const newRocks = {};
       rmSheet.filter(r=>r.Type==='Rock').forEach(r=>{
-        newRocks[r.ID] = {id:r.ID, title:r.Title, owner:r.Owner, due:r.Due, done: String(r.Done||'').toLowerCase()==='yes', notes:r.Notes||'', milestones:[], todos:[]};
+        newRocks[r.ID] = {id:r.ID, title:r.Title, owner:r.Owner, category:r.Category||'', due:r.Due, done: String(r.Done||'').toLowerCase()==='yes', notes:r.Notes||'', milestones:[], todos:[]};
       });
       rmSheet.filter(r=>r.Type==='Milestone').forEach(r=>{
         const parentId = (r.Notes||'').replace('ParentRock:','');
@@ -2566,15 +2793,85 @@ async function syncOutlookNow(){
 }
 
 /* ---------- Nav & wiring ---------- */
+function switchToView(view){
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  document.querySelectorAll('.view').forEach(v=>v.style.display='none');
+  document.getElementById('view-'+view).style.display='block';
+  if(view==='gantt') setTimeout(renderGantt,10);
+  if(view==='week') renderWeek();
+}
 document.querySelectorAll('.navbtn').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.view').forEach(v=>v.style.display='none');
-    document.getElementById('view-'+btn.dataset.view).style.display='block';
-    if(btn.dataset.view==='gantt') setTimeout(renderGantt,10);
-    if(btn.dataset.view==='week') renderWeek();
+  btn.addEventListener('click', ()=> switchToView(btn.dataset.view));
+});
+
+/* ---------- Global search ---------- */
+function searchMatches(query){
+  const q = query.trim().toLowerCase();
+  if(!q) return {rocks:[], todos:[]};
+  const rocks = state.rocks.filter(r =>
+    (r.title||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q)
+  ).map(r => ({rock:r}));
+  const todos = allTodos().filter(t => (t.title||'').toLowerCase().includes(q));
+  return {rocks, todos};
+}
+function renderSearchResults(query){
+  const el = document.getElementById('searchResults');
+  const {rocks, todos} = searchMatches(query);
+  if(!query.trim()){ el.style.display='none'; el.innerHTML=''; return; }
+  if(rocks.length===0 && todos.length===0){
+    el.innerHTML = `<div class="search-result-empty">No matches for "${escapeHtml(query)}"</div>`;
+    el.style.display='block';
+    return;
+  }
+  let html = '';
+  rocks.slice(0,8).forEach(({rock}) => {
+    html += `<div class="search-result-item" onclick="goToSearchResult('rock','${rock.id}')">
+      <div class="search-result-title">🪨 ${escapeHtml(rock.title)}</div>
+      <div class="search-result-meta">Rock · Due ${fmtDate(rock.due)}</div>
+    </div>`;
   });
+  todos.slice(0,12).forEach(t => {
+    html += `<div class="search-result-item" onclick="goToSearchResult('todo','${t.id}')">
+      <div class="search-result-title">${escapeHtml(t.title)}</div>
+      <div class="search-result-meta">To-Do · ${t.rockTitle ? escapeHtml(t.rockTitle) : 'General'}${t.msTitle ? ' → '+escapeHtml(t.msTitle) : ''}</div>
+    </div>`;
+  });
+  el.innerHTML = html;
+  el.style.display='block';
+}
+function flashHighlight(elId){
+  const target = document.getElementById(elId);
+  if(!target) return;
+  target.scrollIntoView({behavior:'smooth', block:'center'});
+  target.style.transition = 'background-color 0.3s';
+  const prevBg = target.style.backgroundColor;
+  target.style.backgroundColor = '#fff3b0';
+  setTimeout(()=>{ target.style.backgroundColor = prevBg; }, 1600);
+}
+function goToSearchResult(kind, id){
+  document.getElementById('globalSearch').value = '';
+  document.getElementById('searchResults').style.display='none';
+  document.getElementById('searchResults').innerHTML='';
+  switchToView('rocks');
+  if(kind==='rock'){
+    rockCollapsedOverride[id] = false;
+    render();
+    setTimeout(()=>flashHighlight('rock-'+id), 60);
+  } else {
+    const t = findTodoRef(id);
+    const rockId = t ? state.rocks.find(r => rockTodosFlat(r).some(x=>x.id===id))?.id : null;
+    if(rockId) rockCollapsedOverride[rockId] = false;
+    render();
+    setTimeout(()=>flashHighlight('todo-'+id), 60);
+  }
+}
+document.getElementById('globalSearch').addEventListener('input', (e)=> renderSearchResults(e.target.value));
+document.getElementById('globalSearch').addEventListener('keydown', (e)=>{
+  if(e.key==='Escape'){ e.target.value=''; document.getElementById('searchResults').style.display='none'; e.target.blur(); }
+});
+document.addEventListener('click', (e)=>{
+  const wrap = document.querySelector('.search-wrap');
+  if(wrap && !wrap.contains(e.target)) document.getElementById('searchResults').style.display='none';
 });
 document.getElementById('btnExport').addEventListener('click', exportExcel);
 document.getElementById('fileImport').addEventListener('change', (e)=>{
@@ -2595,6 +2892,38 @@ document.getElementById('btnSettings').addEventListener('click', openSettings);
   if(el) el.addEventListener('input', renderCapacityPreview);
 });
 document.getElementById('fiscalQuarterStart').addEventListener('input', renderQuarterPreview);
+
+/* ---------- PWA: offline support + "install app" ----------
+Registering the service worker is what makes the browser consider the site
+installable and lets it keep working (from cache) with no signal. The
+'beforeinstallprompt' event is how Chrome/Edge/Android offer a native
+install prompt instead of the plain "Add to Home Screen" menu route — it's
+not supported everywhere (notably iOS Safari, which only ever offers Add to
+Home Screen from its Share menu), so the button just stays hidden there
+rather than doing nothing when clicked. */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* offline support just won't be available — not fatal */ });
+  });
+}
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('btnInstallApp');
+  if(btn) btn.style.display = '';
+});
+async function installApp(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById('btnInstallApp').style.display = 'none';
+}
+window.addEventListener('appinstalled', ()=>{
+  const btn = document.getElementById('btnInstallApp');
+  if(btn) btn.style.display = 'none';
+});
 
 /* ---------- Seed example data on first run ---------- */
 if(state.rocks.length===0){
