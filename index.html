@@ -19,11 +19,18 @@
     --risk:#b23b3b; --risk-light:#fbe9e9; --done:#8a8a86; --done-light:#f0f0ee;
     --radius:10px; --shadow:0 1px 2px rgba(0,0,0,0.04), 0 1px 8px rgba(0,0,0,0.03);
   }
+  body.dark-mode{
+    --bg:#1b1c1a; --panel:#262723; --border:#3a3b36; --text:#e9e8e3; --muted:#9b9a92;
+    --accent:#4fae82; --accent-light:#1e3d2f; --warn:#d9a545; --warn-light:#3a2f16;
+    --risk:#e07070; --risk-light:#3d2020; --done:#84837c; --done-light:#2c2d29;
+    --shadow:0 1px 2px rgba(0,0,0,0.3), 0 1px 8px rgba(0,0,0,0.25);
+  }
+  body.dark-mode .search-results, body.dark-mode .modal{box-shadow:0 8px 24px rgba(0,0,0,.5);}
   *{box-sizing:border-box;}
   /* Slightly larger base type, more line-height and letter-spacing than a
      typical dense web-app default — easier to scan and read for a dyslexic,
      visual-first user rather than optimising for information density. */
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Verdana,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15.5px;line-height:1.55;letter-spacing:.1px;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Verdana,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15.5px;line-height:1.55;letter-spacing:.1px;transition:background-color .15s,color .15s;}
   header{background:var(--panel);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
   header h1{font-size:18px;margin:0;font-weight:650;}
   header .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
@@ -31,9 +38,9 @@
   nav button{background:none;border:none;padding:10px 14px;font-size:13.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-weight:600;}
   nav button.active{color:var(--accent);border-bottom-color:var(--accent);}
   .search-wrap{position:relative;margin-left:auto;align-self:center;margin-bottom:8px;}
-  .search-wrap input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;width:230px;background:#fff;}
+  .search-wrap input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;width:230px;background:var(--panel);}
   .search-wrap input:focus{outline:2px solid var(--accent);outline-offset:1px;}
-  .search-results{position:absolute;top:calc(100% + 4px);right:0;width:380px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:50;}
+  .search-results{position:absolute;top:calc(100% + 4px);right:0;width:380px;max-height:420px;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:50;}
   .search-result-item{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
   .search-result-item:last-child{border-bottom:none;}
   .search-result-item:hover{background:var(--bg);}
@@ -54,7 +61,7 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
   @media (max-width:800px){.grid{grid-template-columns:1fr;}}
   label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;margin-top:10px;}
-  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:#fff;}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:var(--panel);}
   textarea{resize:vertical;min-height:50px;}
   .row-item{border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:var(--panel);}
   .row-item.risk{border-color:#eab8b8;background:var(--risk-light);}
@@ -70,20 +77,20 @@
   .tag.ok{background:var(--accent);color:#fff;}
   .tag.done{background:var(--done);color:#fff;}
   .row-actions{display:flex;gap:6px;}
-  .icon-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;}
+  .icon-btn{border:1px solid var(--border);background:var(--panel);border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;}
   .icon-btn:hover{background:var(--bg);}
   .section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:22px 0 8px;}
   .milestone-block{margin-left:16px;border-left:2px solid var(--border);padding-left:14px;margin-top:8px;}
   .completed-toggle{color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;padding:6px 4px;user-select:none;}
   .completed-toggle:hover{color:var(--text);}
-  #gantt-container{overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+  #gantt-container{overflow-x:auto;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
   .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
   .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
   .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;z-index:50;}
   .modal-bg.open{display:flex;}
-  .modal{background:#fff;border-radius:var(--radius);padding:20px;width:480px;max-width:92vw;max-height:88vh;overflow:auto;}
+  .modal{background:var(--panel);border-radius:var(--radius);padding:20px;width:480px;max-width:92vw;max-height:88vh;overflow:auto;}
   .modal h3{margin-top:0;}
   .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
   .settings-row{display:flex;gap:10px;align-items:center;margin-bottom:8px;}
@@ -108,7 +115,7 @@
   .board-col{background:#f1f1ee;border-radius:14px;padding:12px;flex:1 1 0;min-width:280px;max-width:400px;min-height:120px;transition:background .12s;}
   .board-col.drag-over{background:var(--accent-light);outline:2px dashed var(--accent);}
   .board-col-header{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:750;padding:4px 4px 12px;}
-  .board-col-count{background:#fff;border-radius:20px;padding:1px 9px;font-size:12.5px;color:var(--muted);font-weight:700;margin-left:auto;}
+  .board-col-count{background:var(--panel);border-radius:20px;padding:1px 9px;font-size:12.5px;color:var(--muted);font-weight:700;margin-left:auto;}
   .board-col-body{display:flex;flex-direction:column;gap:12px;}
   .board-empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 6px;}
   .rock-card{background:var(--panel);border:1px solid var(--border);border-left:6px solid var(--done);border-radius:12px;padding:13px 14px;cursor:grab;box-shadow:var(--shadow);}
@@ -134,9 +141,19 @@
   .board-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
   .board-toolbar select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;}
   .cat-pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;border:1px solid;margin-top:6px;}
+  .undo-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#222;color:#fff;padding:11px 12px 11px 16px;border-radius:10px;display:flex;align-items:center;gap:14px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:80;}
+  .undo-toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
+  .undo-toast button{background:var(--accent);color:#fff;border:none;padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .todo-link{font-size:12px;text-decoration:none;color:var(--accent);}
+  .actual-hours-btn{background:none;border:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;}
 </style>
 </head>
 <body>
+<script>
+  // Applied inline, before the rest of the page paints, so a returning
+  // dark-mode user doesn't see a flash of the light theme first.
+  if(localStorage.getItem('eos_planner_theme_v1') === 'dark') document.body.classList.add('dark-mode');
+</script>
 
 <header>
   <div>
@@ -157,6 +174,7 @@
     <button class="btn secondary" id="btnSettings">⚙ Settings</button>
     <button class="btn ghost" id="btnSyncOutlook" onclick="syncOutlookNow()" style="display:none;">🔄 Sync Outlook</button>
     <button class="btn secondary" id="btnInstallApp" onclick="installApp()" style="display:none;">📲 Install app</button>
+    <button class="btn secondary" id="btnDarkMode" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
   </div>
 </header>
 
@@ -252,6 +270,11 @@
     <label>Estimated hours</label>
     <input type="number" id="todoHours" value="2" min="0.5" step="0.5">
     <div class="hint">The planner will slot this into your next available admin time with room, working backward from the deadline.</div>
+    <label>Actual hours (optional)</label>
+    <input type="number" id="todoActualHours" min="0" step="0.5" placeholder="Fill in once it's done, to see how your estimate compared">
+    <label>Link (optional)</label>
+    <input id="todoLink" placeholder="e.g. https://supplier-site.com/order-form">
+    <div class="hint">Shows as a 🔗 next to the to-do — one click to the page you're working from.</div>
     <label>Repeat</label>
     <select id="todoRepeat">
       <option value="none">Does not repeat</option>
@@ -355,6 +378,9 @@ Roll out to production | 2"></textarea>
     <div class="section-title">Local backups</div>
     <div class="hint" style="margin-top:-4px;">Everything lives only in this browser's storage — a snapshot is taken automatically the first time you use the planner each day, so you can roll back or download a copy if something goes wrong. For a portable copy you can keep anywhere, use "Export to Excel" instead.</div>
     <div id="backupList"></div>
+
+    <div class="section-title">Time accuracy</div>
+    <div class="hint" style="margin-top:-4px;" id="timeAccuracyInsight">—</div>
 
     <div class="section-title">To-do default deadline</div>
     <div class="settings-row"><label>Default days until due (EOS standard)</label><input type="number" id="defaultDeadlineDays" step="1" min="1"></div>
@@ -1216,12 +1242,14 @@ function todoRow(t){
       <div>
         <input type="checkbox" ${t.done?'checked':''} onchange="toggleDone('${t.id}', this.checked)">
         <span class="row-title ${t.done?'done':''}">${escapeHtml(t.title)}</span>
+        ${t.link ? `<a class="todo-link" href="${escapeHtml(t.link)}" target="_blank" rel="noopener">🔗</a>` : ''}
         <div class="meta">
           <span>${t.rockTitle ? '🪨 '+escapeHtml(t.rockTitle) : ''}</span>
           ${t.msTitle ? '<span>→ '+escapeHtml(t.msTitle)+'</span>' : ''}
           <span>Due ${fmtDate(t.hardDeadline)}</span>
           <span>Scheduled ${fmtDate(t.scheduledDate)}</span>
-          <span>${t.hours||1}h</span>
+          <span>Est ${t.hours||1}h${t.actualHours!=null ? ` · Actual ${t.actualHours}h` : ''}</span>
+          ${(t.done && t.actualHours==null) ? `<button class="actual-hours-btn" onclick="logActualHours('${t.id}')">Log actual hours</button>` : ''}
           ${(t.recurrence && t.recurrence!=='none') ? `<span title="Repeats ${t.recurrence}">🔁 ${t.recurrence}</span>` : ''}
           ${statusTag(t)}
         </div>
@@ -1619,14 +1647,34 @@ function toggleDone(todoId, val){
   }
   saveState(); render();
 }
+// Deletes a to-do immediately (no confirm dialog — the "Undo" toast that
+// follows is the safety net instead, since a single to-do is low-stakes and
+// a confirm prompt on every click gets old fast). Rocks/Milestones still
+// confirm first since a lot more can cascade away with them, but also get
+// an undo toast belt-and-braces.
 function deleteTodo(todoId){
   const t = findTodoRef(todoId);
-  if(!confirm(`Delete "${t ? t.title : 'this to-do'}"? This can't be undone.`)) return;
+  if(!t) return;
+  let removed = null, fromRockId = null, fromMsId = null, fromIndex = -1;
   state.rocks.forEach(rock => {
-    rock.todos = (rock.todos||[]).filter(t=>t.id!==todoId);
-    (rock.milestones||[]).forEach(ms => ms.todos = (ms.todos||[]).filter(t=>t.id!==todoId));
+    const rIdx = (rock.todos||[]).findIndex(x=>x.id===todoId);
+    if(rIdx>-1){ removed = rock.todos[rIdx]; fromRockId = rock.id; fromMsId = null; fromIndex = rIdx; rock.todos.splice(rIdx,1); }
+    (rock.milestones||[]).forEach(ms=>{
+      const mIdx = (ms.todos||[]).findIndex(x=>x.id===todoId);
+      if(mIdx>-1){ removed = ms.todos[mIdx]; fromRockId = rock.id; fromMsId = ms.id; fromIndex = mIdx; ms.todos.splice(mIdx,1); }
+    });
   });
   saveState(); render();
+  if(removed){
+    showUndoToast(`Deleted "${removed.title}"`, ()=>{
+      const rock = state.rocks.find(r=>r.id===fromRockId);
+      if(!rock) return;
+      const arr = fromMsId ? (rock.milestones.find(m=>m.id===fromMsId)||{todos:[]}) : rock;
+      arr.todos = arr.todos||[];
+      arr.todos.splice(Math.min(fromIndex, arr.todos.length), 0, removed);
+      saveState(); render();
+    });
+  }
 }
 function toggleRockDone(id, val){
   const rock = state.rocks.find(r=>r.id===id);
@@ -1638,17 +1686,33 @@ function deleteRock(id){
   const todoCount = rock ? rockTodosFlat(rock).length : 0;
   const warn = todoCount ? ` It has ${todoCount} to-do${todoCount>1?'s':''} under it — ${todoCount>1?'they':'it'} will be deleted too.` : '';
   if(!confirm(`Delete "${rock ? rock.title : 'this Rock'}"?${warn} This can't be undone.`)) return;
-  state.rocks = state.rocks.filter(r=>r.id!==id);
+  const idx = state.rocks.findIndex(r=>r.id===id);
+  if(idx===-1) return;
+  const removed = state.rocks[idx];
+  state.rocks.splice(idx,1);
   saveState(); render();
+  showUndoToast(`Deleted "${removed.title}"`, ()=>{
+    state.rocks.splice(Math.min(idx, state.rocks.length), 0, removed);
+    saveState(); render();
+  });
 }
 function deleteMilestone(rockId, msId){
   const rock = state.rocks.find(r=>r.id===rockId);
-  const ms = rock ? (rock.milestones||[]).find(m=>m.id===msId) : null;
+  const idx = rock ? (rock.milestones||[]).findIndex(m=>m.id===msId) : -1;
+  const ms = idx>-1 ? rock.milestones[idx] : null;
   const todoCount = ms ? (ms.todos||[]).length : 0;
   const warn = todoCount ? ` Its ${todoCount} to-do${todoCount>1?'s':''} will be deleted too.` : '';
   if(!confirm(`Delete milestone "${ms ? ms.title : ''}"?${warn} This can't be undone.`)) return;
-  if(rock) rock.milestones = (rock.milestones||[]).filter(m=>m.id!==msId);
+  if(!rock || idx===-1) return;
+  rock.milestones.splice(idx,1);
   saveState(); render();
+  showUndoToast(`Deleted "${ms.title}"`, ()=>{
+    const r = state.rocks.find(x=>x.id===rockId);
+    if(!r) return;
+    r.milestones = r.milestones||[];
+    r.milestones.splice(Math.min(idx, r.milestones.length), 0, ms);
+    saveState(); render();
+  });
 }
 
 function openModal(id){ document.getElementById(id).classList.add('open'); }
@@ -1777,17 +1841,52 @@ function openTodoModal(rockId, msId, todoId){
     document.getElementById('todoTitle').value = t.title;
     document.getElementById('todoDeadline').value = t.deadline||'';
     document.getElementById('todoHours').value = t.hours||2;
+    document.getElementById('todoActualHours').value = t.actualHours||'';
+    document.getElementById('todoLink').value = t.link||'';
     document.getElementById('todoRepeat').value = t.recurrence || 'none';
   } else {
     document.getElementById('todoTitle').value = '';
     const days = state.settings.defaultDeadlineDays || 14;
     document.getElementById('todoDeadline').value = isoDate(addDays(new Date(), days));
     document.getElementById('todoHours').value = 2;
+    document.getElementById('todoActualHours').value = '';
+    document.getElementById('todoLink').value = '';
     document.getElementById('todoRepeat').value = 'none';
   }
   openModal('todoModalBg');
 }
 function editTodo(todoId, rockId, msId){ openTodoModal(rockId, msId, todoId); }
+// Quick one-click capture for actual hours once a to-do's done, rather than
+// having to reopen the full edit modal just to fill in one number.
+function logActualHours(todoId){
+  const t = findTodoRef(todoId);
+  if(!t) return;
+  const val = prompt(`How many hours did "${t.title}" actually take? (Estimated: ${t.hours||1}h)`, t.hours||'');
+  if(val === null || val.trim()==='') return;
+  const num = Number(val);
+  if(isNaN(num) || num<0){ alert('Please enter a valid number of hours.'); return; }
+  t.actualHours = num;
+  saveState(); render();
+}
+// Rough, low-stakes insight (not a rigorous stat) so estimates get better
+// over time — averages the actual/estimated ratio across whatever to-dos
+// have both numbers logged.
+function renderTimeAccuracyInsight(){
+  const el = document.getElementById('timeAccuracyInsight');
+  if(!el) return;
+  const logged = allTodos().filter(t => t.actualHours!=null && Number(t.hours)>0);
+  if(logged.length < 3){
+    el.textContent = `Log actual hours on a few more completed to-dos (currently ${logged.length}) to see how your estimates compare.`;
+    return;
+  }
+  const avgRatio = logged.reduce((s,t)=>s+(t.actualHours/Number(t.hours)),0) / logged.length;
+  const pct = Math.round(avgRatio*100);
+  let verdict;
+  if(pct <= 105 && pct >= 95) verdict = "— pretty much spot on.";
+  else if(pct > 105) verdict = `— on average, things take longer than planned. Worth padding new estimates.`;
+  else verdict = `— on average, things take less time than planned. You could estimate a bit tighter.`;
+  el.textContent = `Based on ${logged.length} completed to-do${logged.length>1?'s':''} with logged actual hours: your tasks take about ${pct}% of their estimated time ${verdict}`;
+}
 function saveTodo(){
   const id = document.getElementById('todoId').value;
   let rockId = document.getElementById('todoRockId').value;
@@ -1795,6 +1894,10 @@ function saveTodo(){
   const title = document.getElementById('todoTitle').value.trim();
   const deadline = document.getElementById('todoDeadline').value;
   const hours = document.getElementById('todoHours').value;
+  const actualHoursRaw = document.getElementById('todoActualHours').value;
+  const actualHours = actualHoursRaw === '' ? null : Number(actualHoursRaw);
+  let link = document.getElementById('todoLink').value.trim();
+  if(link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
   const recurrence = document.getElementById('todoRepeat').value || 'none';
   if(!title){ alert('Please enter a title.'); return; }
 
@@ -1814,7 +1917,7 @@ function saveTodo(){
       if(idx>-1) ms.todos.splice(idx,1);
     });
   }
-  const todoObj = Object.assign({id: id||uid(), title, deadline, hours, recurrence}, preserved);
+  const todoObj = Object.assign({id: id||uid(), title, deadline, hours, actualHours, link, recurrence}, preserved);
   if(chosenParent){
     const ms = rock.milestones.find(m=>m.id===chosenParent);
     ms.todos = ms.todos||[]; ms.todos.push(todoObj);
@@ -2044,6 +2147,7 @@ function openSettings(){
   renderCapacityPreview();
   updateOutlookStatusUI();
   renderBackupList();
+  renderTimeAccuracyInsight();
   openModal('settingsModalBg');
 }
 // Reads straight from the (possibly unsaved) Settings form fields, so the
@@ -2159,7 +2263,7 @@ function exportExcel(){
   allTodos().forEach(t=>{
     todosRows.push({
       ID:t.id, Title:t.title, RockID:t.rockId, RockTitle:t.rockTitle, MilestoneID:t.msId||'', MilestoneTitle:t.msTitle||'',
-      Deadline:t.hardDeadline, Hours:t.hours, Done:t.done?'Yes':'No', ScheduledDate:t.scheduledDate||'', AtRisk:t.atRisk?'Yes':'No'
+      Deadline:t.hardDeadline, Hours:t.hours, ActualHours:t.actualHours!=null?t.actualHours:'', Link:t.link||'', Done:t.done?'Yes':'No', ScheduledDate:t.scheduledDate||'', AtRisk:t.atRisk?'Yes':'No'
     });
   });
   const wb = XLSX.utils.book_new();
@@ -2191,7 +2295,7 @@ function importExcel(file){
         if(newRocks[parentId]) newRocks[parentId].milestones.push({id:r.ID, title:r.Title, due:r.Due, todos:[]});
       });
       tdSheet.forEach(t=>{
-        const todoObj = {id:t.ID, title:t.Title, deadline:t.Deadline, hours:t.Hours, done:t.Done==='Yes', scheduledDate:t.ScheduledDate||null, atRisk:false};
+        const todoObj = {id:t.ID, title:t.Title, deadline:t.Deadline, hours:t.Hours, actualHours: t.ActualHours!==undefined && t.ActualHours!=='' ? Number(t.ActualHours) : null, link:t.Link||'', done:t.Done==='Yes', scheduledDate:t.ScheduledDate||null, atRisk:false};
         const rock = newRocks[t.RockID];
         if(!rock) return;
         if(t.MilestoneID){
@@ -2892,6 +2996,49 @@ document.getElementById('btnSettings').addEventListener('click', openSettings);
   if(el) el.addEventListener('input', renderCapacityPreview);
 });
 document.getElementById('fiscalQuarterStart').addEventListener('input', renderQuarterPreview);
+
+/* ---------- Dark mode ---------- */
+const THEME_KEY = 'eos_planner_theme_v1';
+function updateDarkModeButton(){
+  const btn = document.getElementById('btnDarkMode');
+  if(btn) btn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+}
+function toggleDarkMode(){
+  document.body.classList.toggle('dark-mode');
+  localStorage.setItem(THEME_KEY, document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+  updateDarkModeButton();
+}
+updateDarkModeButton();
+
+/* ---------- Undo toast ----------
+A single lightweight toast used after deletes — keeps a snapshot of whatever
+was just removed (and exactly where it lived) so "Undo" can splice it back
+into the same spot rather than just appending it at the end. Only one undo
+is live at a time; starting a new one silently drops the previous (matches
+how most apps behave — undo is a short-lived safety net, not a history). */
+let pendingUndo = null;
+let undoTimer = null;
+function showUndoToast(message, undoFn){
+  pendingUndo = undoFn;
+  clearTimeout(undoTimer);
+  let el = document.getElementById('undoToast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'undoToast';
+    el.className = 'undo-toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span>${escapeHtml(message)}</span><button onclick="runUndo()">Undo</button>`;
+  el.classList.add('show');
+  undoTimer = setTimeout(()=>{ el.classList.remove('show'); pendingUndo = null; }, 7000);
+}
+function runUndo(){
+  if(pendingUndo) pendingUndo();
+  pendingUndo = null;
+  clearTimeout(undoTimer);
+  const el = document.getElementById('undoToast');
+  if(el) el.classList.remove('show');
+}
 
 /* ---------- PWA: offline support + "install app" ----------
 Registering the service worker is what makes the browser consider the site
