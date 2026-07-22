@@ -267,6 +267,27 @@ Roll out to production | 2"></textarea>
   </div>
 </div>
 
+<!-- Day adjustment modal (block time / ad-hoc availability) -->
+<div class="modal-bg" id="adjModalBg">
+  <div class="modal">
+    <h3 id="adjModalTitle">Block time</h3>
+    <input type="hidden" id="adjType">
+    <div class="hint" id="adjModalHint" style="margin-top:-4px;"></div>
+    <label>Date</label>
+    <input type="date" id="adjDate">
+    <label>From</label>
+    <input type="time" id="adjStart">
+    <label>To</label>
+    <input type="time" id="adjEnd">
+    <label>Label (optional)</label>
+    <input id="adjLabel" placeholder="e.g. Travel to supplier meeting">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('adjModalBg')">Cancel</button>
+      <button class="btn" onclick="saveDayAdjustment()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="modal-bg" id="settingsModalBg">
   <div class="modal" style="width:560px;">
@@ -293,6 +314,10 @@ Roll out to production | 2"></textarea>
       <input type="text" id="holLabel" placeholder="Label (optional)" style="flex:1.4;">
       <button class="btn secondary" style="white-space:nowrap;" onclick="addHoliday()">+ Add</button>
     </div>
+
+    <div class="section-title">Blocked time &amp; ad-hoc availability</div>
+    <div class="hint" style="margin-top:-4px;">Added from the Day Schedule view for a specific day — this is just a full list for review/cleanup. 🚧 Blocked time reduces that day's capacity; ➕ Ad-hoc availability adds a one-off slot on an otherwise non-admin day.</div>
+    <div id="dayAdjustList"></div>
 
     <div class="section-title">To-do default deadline</div>
     <div class="settings-row"><label>Default days until due (EOS standard)</label><input type="number" id="defaultDeadlineDays" step="1" min="1"></div>
@@ -359,7 +384,7 @@ const LS_KEY = 'eos_planner_state_v1';
 function defaultState(){
   return {
     settings: {
-      tueAnchor: isoDate(nextWeekday(new Date(),2)), defaultDeadlineDays: 14, holidays: [],
+      tueAnchor: isoDate(nextWeekday(new Date(),2)), defaultDeadlineDays: 14, holidays: [], dayAdjustments: [],
       msalClientId: '', msalTenantId: '',
       vtoOwnerFilter: 'Nick',
       adminWindows: { mon: {start:'13:00', end:'17:00'}, tue: {start:'09:00', end:'17:00'}, thu: {start:'09:00', end:'17:00'} },
@@ -450,6 +475,89 @@ function isHoliday(dateStr){
   const holidays = state.settings.holidays || [];
   return holidays.some(h => dateStr >= h.start && dateStr <= h.end);
 }
+
+/* ---------- Manual day adjustments ----------
+Two kinds, both scoped to a single date + time range:
+- 'block'     — travel time, or just "unavailable" — carved OUT of an admin
+                day's capacity, same idea as an Outlook meeting but added by
+                hand for things that aren't on the calendar.
+- 'available' — an ad-hoc gap on an otherwise non-admin ("clinical") day,
+                e.g. a cancelled appointment — adds a one-off slot for just
+                that date/range, on top of the usual Mon-PM/alt-Tue/Thu
+                pattern, without you having to change your standing windows.
+Both live in state.settings.dayAdjustments as flat {id,date,type,start,end,label}
+records so they're just another array like holidays — same export/import,
+same simple add/remove UI pattern. */
+function dayAdjustmentsForDate(dateStr){
+  return (state.settings.dayAdjustments || []).filter(a => a.date === dateStr);
+}
+function blockMinutesOverlap(dateStr, winStartMin, winEndMin){
+  let total = 0;
+  dayAdjustmentsForDate(dateStr).filter(a => a.type==='block').forEach(a => {
+    const s = Math.max(timeToMin(a.start), winStartMin), e = Math.min(timeToMin(a.end), winEndMin);
+    if(e > s) total += (e - s);
+  });
+  return total;
+}
+// Net ad-hoc availability for a date — any 'available' ranges, minus any
+// 'block' minutes that happen to fall inside them.
+function availableMinutesForDate(dateStr){
+  let total = 0;
+  dayAdjustmentsForDate(dateStr).filter(a => a.type==='available').forEach(a => {
+    const s = timeToMin(a.start), e = timeToMin(a.end);
+    if(e <= s) return;
+    total += Math.max(0, (e - s) - blockMinutesOverlap(dateStr, s, e));
+  });
+  return total;
+}
+// Same idea as remainingWorkMinutesToday, but for an ad-hoc availability
+// range rather than the standard admin-day template — so if today has a
+// 2-3pm gap and it's already 2:40pm, only the remaining 20 minutes count.
+function remainingAdhocMinutesToday(dateStr){
+  if(dateStr !== todayISO()) return availableMinutesForDate(dateStr);
+  const nowMin = new Date().getHours()*60 + new Date().getMinutes();
+  let total = 0;
+  dayAdjustmentsForDate(dateStr).filter(a => a.type==='available').forEach(a => {
+    const s = Math.max(timeToMin(a.start), nowMin), e = timeToMin(a.end);
+    if(e <= s) return;
+    total += Math.max(0, (e - s) - blockMinutesOverlap(dateStr, s, e));
+  });
+  return total;
+}
+function openDayAdjustModal(type, dateStr){
+  document.getElementById('adjType').value = type;
+  document.getElementById('adjModalTitle').textContent = type==='block' ? 'Block time' : 'Add ad-hoc availability';
+  document.getElementById('adjModalHint').textContent = type==='block'
+    ? 'Carves this time out of that day\'s admin capacity — e.g. travel to a supplier, or just marking yourself unavailable.'
+    : 'Adds this as a one-off available window on a day that isn\'t normally an admin day — e.g. a cancelled appointment freed up some time.';
+  document.getElementById('adjDate').value = dateStr;
+  document.getElementById('adjStart').value = '09:00';
+  document.getElementById('adjEnd').value = '10:00';
+  document.getElementById('adjLabel').value = '';
+  openModal('adjModalBg');
+}
+function saveDayAdjustment(){
+  const type = document.getElementById('adjType').value;
+  const dateStr = document.getElementById('adjDate').value;
+  const start = document.getElementById('adjStart').value;
+  const end = document.getElementById('adjEnd').value;
+  const label = document.getElementById('adjLabel').value;
+  if(!dateStr || !start || !end){ alert('Please fill in the date, start and end time.'); return; }
+  if(end <= start){ alert('End time must be after the start time.'); return; }
+  addDayAdjustment(type, dateStr, start, end, label);
+  closeModal('adjModalBg');
+  render();
+}
+function addDayAdjustment(type, dateStr, start, end, label){
+  state.settings.dayAdjustments = state.settings.dayAdjustments || [];
+  state.settings.dayAdjustments.push({id: uid(), type, date: dateStr, start, end, label: (label||'').trim()});
+  state.settings.dayAdjustments.sort((a,b) => a.date===b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date));
+  saveState();
+}
+function removeDayAdjustment(id){
+  state.settings.dayAdjustments = (state.settings.dayAdjustments||[]).filter(a => a.id!==id);
+  saveState();
+}
 // How many work minutes are still ahead today within a given admin window —
 // so "today" stops looking like a fully-open slot once the window has partly
 // or fully elapsed. Walks the same break/lunch-aware template used to build
@@ -489,13 +597,34 @@ function generateSlots(weeksAhead){
       const diffWeeks = Math.round((d - anchor) / (7*24*3600*1000));
       if(diffWeeks % 2 === 0){ label = 'Tue (admin, alt week)'; dowNum = 2; }
     } else if(dow === 4){ label = 'Thu (admin)'; dowNum = 4; }
-    if(label === null) continue;
+
+    if(label === null){
+      // Not a standard admin day — but an ad-hoc "available" adjustment
+      // (e.g. a cancelled appointment) turns it into a one-off slot anyway.
+      const adhocMin = dateStr===today ? remainingAdhocMinutesToday(dateStr) : availableMinutesForDate(dateStr);
+      if(adhocMin <= 1e-9) continue;
+      slots.push({date: dateStr, label: 'Ad-hoc availability', capacity: adhocMin/60});
+      continue;
+    }
+
     let capacity = override!==undefined ? override : capacityMinutesForDow(dowNum)/60;
+    // Subtract any manually-added "block" time (travel, unavailable) that
+    // falls inside this day's admin window.
+    const win = windowForDow(dowNum);
+    const blockMin = blockMinutesOverlap(dateStr, timeToMin(win.start), timeToMin(win.end));
+    if(blockMin > 0) capacity = Math.max(0, capacity - blockMin/60);
+    // Ad-hoc availability added on TOP of a standard admin day (e.g. an
+    // extra hour someone freed up) adds back on top of the template.
+    capacity += (dateStr===today ? remainingAdhocMinutesToday(dateStr) : availableMinutesForDate(dateStr));
     if(dateStr === today){
-      // Clamp today's capacity to whatever's actually still ahead on the
-      // clock — otherwise a task can get "scheduled today" at, say, 16:58
-      // into a window that's effectively already over.
-      capacity = Math.min(capacity, remainingWorkMinutesToday(dowNum)/60);
+      // Clamp today's template-based capacity to whatever's actually still
+      // ahead on the clock — otherwise a task can get "scheduled today" at,
+      // say, 16:58 into a window that's effectively already over. (The
+      // ad-hoc portion above is already its own today-aware calculation, so
+      // it isn't double-clamped here.)
+      const adhocPortion = dateStr===today ? remainingAdhocMinutesToday(dateStr) : 0;
+      const templatePortion = Math.max(0, capacity - adhocPortion);
+      capacity = Math.min(templatePortion, remainingWorkMinutesToday(dowNum)/60) + adhocPortion;
       if(capacity <= 1e-9) continue; // nothing left today — skip the slot entirely
     }
     slots.push({date: dateStr, label, capacity});
@@ -745,39 +874,66 @@ automatically, Outlook meetings carved out of whichever work chunks they
 overlap, and whatever's left auto-filled with your highest-priority to-dos
 (the same day-level assignment runAutoReschedule already decided — this just
 lays that day out block by block instead of as a flat list/hour total). */
-function carveOutMeetings(workBlocks, meetings){
+// Generic carve-out: cuts any range [start,end) out of the 'work' blocks in
+// workBlocks, replacing the covered portion with a block of the given type
+// (and a 'subject' label for display). Used for both Outlook meetings and
+// manually-added "block" time (travel/unavailable) — same mechanic either
+// way, just a different source and label.
+function carveOutRanges(workBlocks, ranges, type){
   let blocks = workBlocks.slice();
-  meetings.forEach(m=>{
-    const ms = timeToMin(m.start), me = timeToMin(m.end);
-    if(me<=ms) return;
+  ranges.forEach(r=>{
+    const rs = timeToMin(r.start), re = timeToMin(r.end);
+    if(re<=rs) return;
     const next = [];
     blocks.forEach(b=>{
-      if(b.type!=='work' || me<=b.start || ms>=b.end){ next.push(b); return; }
-      if(ms>b.start) next.push({start:b.start, end:ms, type:'work'});
-      next.push({start:Math.max(ms,b.start), end:Math.min(me,b.end), type:'meeting', subject:m.subject});
-      if(me<b.end) next.push({start:me, end:b.end, type:'work'});
+      if(b.type!=='work' || re<=b.start || rs>=b.end){ next.push(b); return; }
+      if(rs>b.start) next.push({start:b.start, end:rs, type:'work'});
+      next.push({start:Math.max(rs,b.start), end:Math.min(re,b.end), type, subject:r.label});
+      if(re<b.end) next.push({start:re, end:b.end, type:'work'});
     });
     blocks = next;
   });
   return blocks;
 }
+function carveOutMeetings(workBlocks, meetings){
+  return carveOutRanges(workBlocks, meetings.map(m=>({start:m.start, end:m.end, label:m.subject})), 'meeting');
+}
 
 function getDayBlocks(dateStr){
   const d = parseISO(dateStr);
   const dow = d.getDay();
-  if(![1,2,4].includes(dow)) return {isAdmin:false, reason:'Not an admin day.'};
   if(isHoliday(dateStr)) return {isAdmin:false, reason:'Holiday.'};
+
+  const isStandardDow = [1,2,4].includes(dow);
+  let isOffWeekTue = false;
   if(dow===2){
     const anchor = parseISO(state.settings.tueAnchor);
     const diffWeeks = Math.round((d-anchor)/(7*24*3600*1000));
-    if(diffWeeks%2!==0) return {isAdmin:false, reason:'Off-week Tuesday.'};
+    isOffWeekTue = diffWeeks%2!==0;
+  }
+  const isStandardAdmin = isStandardDow && !isOffWeekTue;
+  const adhocRanges = dayAdjustmentsForDate(dateStr).filter(a=>a.type==='available');
+  const blockRanges = dayAdjustmentsForDate(dateStr).filter(a=>a.type==='block');
+
+  if(!isStandardAdmin && adhocRanges.length===0){
+    return {isAdmin:false, reason: isStandardDow ? 'Off-week Tuesday.' : 'Not an admin day — add ad-hoc availability below if you\'ve got a gap today.'};
   }
   const override = state.outlookCapacityOverride ? state.outlookCapacityOverride[dateStr] : undefined;
-  if(override!==undefined && override<=0) return {isAdmin:false, reason:'Fully booked in Outlook.'};
+  if(isStandardAdmin && adhocRanges.length===0 && override!==undefined && override<=0) return {isAdmin:false, reason:'Fully booked in Outlook.'};
 
-  let blocks = buildDayTemplate(dow);
+  let blocks = isStandardAdmin ? buildDayTemplate(dow) : [];
+  // Ad-hoc availability — either the whole day's blocks (a normally clinical
+  // day with a gap) or extra ranges layered on top of a standard admin day
+  // (e.g. an extra hour someone freed up before your usual window).
+  adhocRanges.forEach(r=>{
+    const s = timeToMin(r.start), e = timeToMin(r.end);
+    if(e>s) blocks.push({start:s, end:e, type:'work'});
+  });
+  blocks.sort((a,b)=>a.start-b.start);
+
   const meetings = (state.outlookEvents && state.outlookEvents[dateStr]) || [];
   blocks = carveOutMeetings(blocks, meetings);
+  blocks = carveOutRanges(blocks, blockRanges.map(r=>({start:r.start, end:r.end, label:r.label||'Unavailable'})), 'blocked');
 
   const chunks = [];
   blocks.forEach(b=>{
@@ -835,7 +991,8 @@ const BLOCK_STYLES = {
   lunch:   {bg:'var(--done-light)', fg:'var(--muted)', icon:'🍽️'},
   meeting: {bg:'#e8eef7', fg:'#3a5a8c', icon:'🗓️'},
   free:    {bg:'#fbfbfa', fg:'var(--muted)', icon:''},
-  past:    {bg:'#f4f4f2', fg:'var(--muted)', icon:'⏳'}
+  past:    {bg:'#f4f4f2', fg:'var(--muted)', icon:'⏳'},
+  blocked: {bg:'#f3e9db', fg:'#8a6320', icon:'🚧'}
 };
 
 function renderDaySchedule(){
@@ -851,7 +1008,25 @@ function renderDaySchedule(){
     <button class="btn secondary" onclick="jumpDayScheduleToNextAdmin()">Next admin day</button>
     <button class="btn secondary" onclick="shiftDaySchedule(1)">Next day →</button>
     <span style="color:var(--muted);font-size:13px;margin-left:6px;">${dayName}, ${fmtDate(dateStr)}${isToday?' (today)':''}</span>
+  </div>
+  <div class="toolbar">
+    <button class="btn secondary" onclick="openDayAdjustModal('block','${dateStr}')">🚧 Block time (travel/unavailable)</button>
+    <button class="btn secondary" onclick="openDayAdjustModal('available','${dateStr}')">➕ Add ad-hoc availability</button>
   </div>`;
+
+  const dayAdjs = dayAdjustmentsForDate(dateStr);
+  if(dayAdjs.length){
+    html += `<div class="card" style="padding:10px 14px;margin-bottom:14px;">`;
+    dayAdjs.forEach(a=>{
+      const icon = a.type==='block' ? '🚧' : '➕';
+      const kind = a.type==='block' ? 'Blocked' : 'Available';
+      html += `<div class="settings-row" style="margin-bottom:4px;">
+        <span style="flex:1;font-size:13px;">${icon} ${kind} ${a.start}–${a.end}${a.label?(' — '+escapeHtml(a.label)):''}</span>
+        <button class="icon-btn" onclick="removeDayAdjustment('${a.id}');renderDaySchedule();">Remove</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
 
   const result = getDayBlocks(dateStr);
   if(!result.isAdmin){
@@ -866,6 +1041,7 @@ function renderDaySchedule(){
       else if(b.type==='break') label = 'Break';
       else if(b.type==='lunch') label = 'Lunch';
       else if(b.type==='meeting') label = escapeHtml(b.subject);
+      else if(b.type==='blocked') label = escapeHtml(b.subject||'Unavailable');
       else if(b.type==='past') label = '<span style="color:var(--muted);">Already passed</span>';
       else label = '<span style="color:var(--muted);">Free — nothing scheduled</span>';
       html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${style.bg};margin-bottom:5px;">
@@ -1641,6 +1817,7 @@ function openSettings(){
   document.getElementById('lunchTue').checked = !!state.settings.lunchDays.tue;
   document.getElementById('lunchThu').checked = !!state.settings.lunchDays.thu;
   renderHolidayList();
+  renderDayAdjustList();
   renderCapacityPreview();
   updateOutlookStatusUI();
   openModal('settingsModalBg');
@@ -1701,6 +1878,16 @@ function addHoliday(){
 function removeHoliday(i){
   state.settings.holidays.splice(i,1);
   renderHolidayList();
+}
+function renderDayAdjustList(){
+  const el = document.getElementById('dayAdjustList');
+  const adjs = (state.settings.dayAdjustments||[]).slice().sort((a,b)=>a.date===b.date?a.start.localeCompare(b.start):a.date.localeCompare(b.date));
+  if(adjs.length===0){ el.innerHTML = '<div class="hint">None added yet.</div>'; return; }
+  el.innerHTML = adjs.map(a=>{
+    const icon = a.type==='block' ? '🚧' : '➕';
+    const kind = a.type==='block' ? 'Blocked' : 'Available';
+    return `<div class="settings-row"><span style="flex:1;">${icon} ${fmtDate(a.date)}, ${a.start}–${a.end} — ${kind}${a.label?(': '+escapeHtml(a.label)):''}</span><button class="icon-btn" onclick="removeDayAdjustment('${a.id}');renderDayAdjustList();">Remove</button></div>`;
+  }).join('');
 }
 function resetAllData(){
   if(!confirm('This clears everything stored in this browser for the planner (Rocks, To-Dos, holidays, Outlook connection) and cannot be undone. Export to Excel first if you want a backup. Continue?')) return;
