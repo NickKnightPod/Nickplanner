@@ -163,11 +163,11 @@
   <div class="toolbar">
     <button class="btn" onclick="openQuickAddTask()">+ Add Task</button>
     <button class="btn secondary" id="btnExport">⬇ Export to Excel</button>
-    <label class="btn secondary" style="margin:0;cursor:pointer;">
-      ⬆ Import from Excel (full backup)
+    <label class="btn secondary" style="margin:0;cursor:pointer;" title="Only for a file this planner previously exported — replaces everything. For your weekly VTO workbook, use &quot;Weekly VTO Update&quot; instead.">
+      ⬆ Restore a planner backup (.xlsx from Export)
       <input type="file" id="fileImport" accept=".xlsx" style="display:none;">
     </label>
-    <label class="btn" style="margin:0;cursor:pointer;">
+    <label class="btn" style="margin:0;cursor:pointer;" title="For your live VTO workbook — merges in changes, doesn't replace anything.">
       🔄 Weekly VTO Update
       <input type="file" id="fileVtoImport" accept=".xlsx" style="display:none;">
     </label>
@@ -2281,6 +2281,20 @@ function importExcel(file){
   reader.onload = function(e){
     try{
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellStyles:true});
+      // This is a FULL REPLACE of everything in the planner, so it must only
+      // ever run on a file this app itself exported — it's recognised by its
+      // exact sheet names ("Rocks & Milestones" + "To-Dos"). A weekly VTO
+      // workbook (different sheet names/layout entirely) would otherwise
+      // silently parse to zero rows and wipe every Rock/To-Do currently in
+      // the planner with nothing to show for it — this happened for real,
+      // so it's now a hard stop instead of a silent no-op. Your live VTO
+      // workbook should always go through "Weekly VTO Update" instead, which
+      // merges rather than replaces.
+      if(!wb.Sheets['Rocks & Milestones'] || !wb.Sheets['To-Dos']){
+        alert('This doesn\'t look like a file exported from this planner (expected sheets named "Rocks & Milestones" and "To-Dos" weren\'t found) — nothing was changed.\n\nIf this is your weekly VTO workbook, use "Weekly VTO Update" instead — that one merges in changes rather than replacing everything.');
+        return;
+      }
+      if(!confirm('This will REPLACE every Rock and To-Do currently in the planner with what\'s in this file. If you want to add/update from your weekly VTO instead, cancel and use "Weekly VTO Update".\n\nContinue with the full replace?')) return;
       // hidden rows/columns are skipped (someone may have hidden a completed Rock etc. rather than deleted it)
       const rmSheet = visibleSheetToObjects(wb.Sheets['Rocks & Milestones']);
       const tdSheet = visibleSheetToObjects(wb.Sheets['To-Dos']);
