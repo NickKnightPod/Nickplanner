@@ -162,6 +162,7 @@
   </div>
   <div class="toolbar">
     <button class="btn" onclick="openQuickAddTask()">+ Add Task</button>
+    <button class="btn secondary" onclick="openAnnualLeaveModal()">🌴 Annual Leave</button>
     <button class="btn secondary" id="btnExport">⬇ Export to Excel</button>
     <label class="btn secondary" style="margin:0;cursor:pointer;" title="Only for a file this planner previously exported — replaces everything. For your weekly VTO workbook, use &quot;Weekly VTO Update&quot; instead.">
       ⬆ Restore a planner backup (.xlsx from Export)
@@ -344,6 +345,24 @@ Roll out to production | 2"></textarea>
   </div>
 </div>
 
+<!-- Annual leave modal -->
+<div class="modal-bg" id="annualLeaveModalBg">
+  <div class="modal">
+    <h3>🌴 Annual Leave</h3>
+    <div class="hint" style="margin-top:-4px;">Blocks out every admin slot across this date range — same as a holiday, just quicker to add for a stretch of leave. To-dos scheduled in that window auto-reschedule around it.</div>
+    <label>First day off</label>
+    <input type="date" id="alStart">
+    <label>Last day off</label>
+    <input type="date" id="alEnd">
+    <label>Label (optional)</label>
+    <input id="alLabel" value="Annual leave">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('annualLeaveModalBg')">Cancel</button>
+      <button class="btn" onclick="saveAnnualLeave()">Block this out</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="modal-bg" id="settingsModalBg">
   <div class="modal" style="width:560px;">
@@ -384,6 +403,10 @@ Roll out to production | 2"></textarea>
 
     <div class="section-title">To-do default deadline</div>
     <div class="settings-row"><label>Default days until due (EOS standard)</label><input type="number" id="defaultDeadlineDays" step="1" min="1"></div>
+
+    <div class="section-title">Rock time reservation</div>
+    <div class="hint" style="margin-top:-4px;">When you create a new Rock, this many hours are automatically reserved in your admin time as a placeholder — so it's never sitting there getting zero attention before you've broken it into sections. Planning the Rock (via "📋 Plan sections") replaces the placeholder with the real breakdown automatically.</div>
+    <div class="settings-row"><label>Hours to auto-reserve per new Rock</label><input type="number" id="defaultRockHours" step="0.5" min="0"></div>
 
     <div class="section-title">Weekly VTO import</div>
     <label>Only import Rocks / To-Dos owned by</label>
@@ -447,7 +470,7 @@ const LS_KEY = 'eos_planner_state_v1';
 function defaultState(){
   return {
     settings: {
-      tueAnchor: isoDate(nextWeekday(new Date(),2)), defaultDeadlineDays: 14, holidays: [], dayAdjustments: [],
+      tueAnchor: isoDate(nextWeekday(new Date(),2)), defaultDeadlineDays: 14, defaultRockHours: 14, holidays: [], dayAdjustments: [],
       msalClientId: '', msalTenantId: '',
       vtoOwnerFilter: 'Nick',
       adminWindows: { mon: {start:'13:00', end:'17:00'}, tue: {start:'09:00', end:'17:00'}, thu: {start:'09:00', end:'17:00'} },
@@ -997,7 +1020,7 @@ function renderBoard(){
           const st = todoStatus(t);
           html += `<div class="mini-todo ${(t.atRisk && !t.done)?'risk':''}" onclick="cycleTodoStatus('${t.id}')">
             <span class="mini-todo-pill">${st==='done'?'✅':st==='doing'?'🔵':'⬜'}</span>
-            <span class="mini-todo-title ${t.done?'done':''}">${escapeHtml(t.title)}${(t.recurrence && t.recurrence!=='none') ? ' 🔁' : ''}</span>
+            <span class="mini-todo-title ${t.done?'done':''}">${escapeHtml(t.title)}${(t.recurrence && t.recurrence!=='none') ? ' 🔁' : ''}${t.__placeholder ? ' (auto-reserved)' : ''}</span>
             ${(t.atRisk && !t.done) ? '<span class="mini-todo-risk">AT RISK</span>' : ''}
           </div>`;
         });
@@ -1243,6 +1266,7 @@ function todoRow(t){
         <input type="checkbox" ${t.done?'checked':''} onchange="toggleDone('${t.id}', this.checked)">
         <span class="row-title ${t.done?'done':''}">${escapeHtml(t.title)}</span>
         ${t.link ? `<a class="todo-link" href="${escapeHtml(t.link)}" target="_blank" rel="noopener">🔗</a>` : ''}
+        ${t.__placeholder ? `<span class="tag" style="background:var(--accent-light);color:var(--accent);" title="Auto-reserved time — use &quot;Plan sections&quot; on this Rock to break it down and replace this">Auto-reserved</span>` : ''}
         <div class="meta">
           <span>${t.rockTitle ? '🪨 '+escapeHtml(t.rockTitle) : ''}</span>
           ${t.msTitle ? '<span>→ '+escapeHtml(t.msTitle)+'</span>' : ''}
@@ -1746,10 +1770,31 @@ function persistRockFromModal(){
     Object.assign(rock, {title, due, owner, category, notes});
   } else {
     rockId = uid();
-    state.rocks.push({id: rockId, title, due, owner, category, notes, milestones:[], todos:[]});
+    const newRock = {id: rockId, title, due, owner, category, notes, milestones:[], todos:[]};
+    addRockPlaceholderTodo(newRock, due);
+    state.rocks.push(newRock);
   }
   saveState(); render();
   return rockId;
+}
+// A brand-new Rock starts with zero to-dos, which means it gets zero admin
+// time booked for it until it's actually broken into sections — easy for a
+// Rock to sit untouched for weeks. So it starts with one placeholder to-do
+// that reserves `defaultRockHours` of admin time toward it. Actually
+// planning the Rock (Plan sections / Ask Claude / Upload a plan) replaces
+// this placeholder with the real breakdown automatically — see
+// removeRockPlaceholders(), called at the start of savePlanSections().
+function addRockPlaceholderTodo(rock, due){
+  const hours = state.settings.defaultRockHours;
+  if(!hours || hours<=0) return; // 0 = "off" for anyone who doesn't want this
+  rock.todos = rock.todos || [];
+  rock.todos.push({
+    id: uid(), title: 'Plan & work on this Rock', deadline: due, hours,
+    done:false, scheduledDate:null, atRisk:false, __placeholder:true
+  });
+}
+function removeRockPlaceholders(rock){
+  rock.todos = (rock.todos||[]).filter(t=>!t.__placeholder);
 }
 function saveRock(){
   const rockId = persistRockFromModal();
@@ -2032,6 +2077,7 @@ function savePlanSections(){
   const totalDays = Math.max(1, Math.round((dueD - todayD)/(24*3600*1000)));
   const step = totalDays / (parsed.length + 1);
 
+  removeRockPlaceholders(rock); // real sections now exist — the reserved-time placeholder is no longer needed
   rock.todos = rock.todos || [];
   parsed.forEach((p,i)=>{
     const offset = Math.max(1, Math.round(step*(i+1)));
@@ -2130,6 +2176,7 @@ function openSettings(){
   renderQuarterPreview();
   document.getElementById('tueAnchor').value = state.settings.tueAnchor;
   document.getElementById('defaultDeadlineDays').value = state.settings.defaultDeadlineDays || 14;
+  document.getElementById('defaultRockHours').value = state.settings.defaultRockHours!=null ? state.settings.defaultRockHours : 14;
   document.getElementById('vtoOwnerFilter').value = state.settings.vtoOwnerFilter || '';
   document.getElementById('msalClientId').value = state.settings.msalClientId || '';
   document.getElementById('msalTenantId').value = state.settings.msalTenantId || '';
@@ -2207,6 +2254,42 @@ function removeHoliday(i){
   state.settings.holidays.splice(i,1);
   renderHolidayList();
 }
+// Quick-access "Annual Leave" button in the header — same underlying
+// mechanism as a Settings → Holiday entry (state.settings.holidays, which
+// generateSlots()/isHoliday() already skip entirely for admin-time
+// purposes), just a faster one-click path for blocking out a stretch of
+// leave without going into Settings. Saves immediately, unlike the
+// Settings-modal holiday row which waits for "Save Settings".
+function openAnnualLeaveModal(){
+  const start = todayISO();
+  document.getElementById('alStart').value = start;
+  document.getElementById('alEnd').value = isoDate(addDays(parseISO(start), 13)); // defaults to a 2-week block
+  document.getElementById('alLabel').value = 'Annual leave';
+  openModal('annualLeaveModalBg');
+}
+function saveAnnualLeave(){
+  const start = document.getElementById('alStart').value;
+  let end = document.getElementById('alEnd').value;
+  const label = document.getElementById('alLabel').value.trim() || 'Annual leave';
+  if(!start || !end){ alert('Pick a first and last day off.'); return; }
+  if(end < start) end = start;
+  state.settings.holidays = state.settings.holidays || [];
+  state.settings.holidays.push({start, end, label});
+  state.settings.holidays.sort((a,b)=>a.start.localeCompare(b.start));
+  saveState();
+  closeModal('annualLeaveModalBg');
+  render();
+  // Let Nick know it actually landed, and roughly how much admin time just
+  // disappeared from the schedule — same reassurance the VTO import gives.
+  let d = parseISO(start), skipped = 0;
+  const endD = parseISO(end);
+  const adminByDow = {1:true,2:true,4:true};
+  while(d<=endD){
+    if(adminByDow[d.getDay()]) skipped++;
+    d = addDays(d,1);
+  }
+  alert(`Blocked out ${fmtDate(start)} – ${fmtDate(end)} as "${label}". Up to ${skipped} admin day${skipped===1?'':'s'} in that range will be skipped (fewer if it falls on an off-week Tuesday), and anything scheduled in it will auto-reschedule around your leave.`);
+}
 function renderDayAdjustList(){
   const el = document.getElementById('dayAdjustList');
   const adjs = (state.settings.dayAdjustments||[]).slice().sort((a,b)=>a.date===b.date?a.start.localeCompare(b.start):a.date.localeCompare(b.date));
@@ -2231,6 +2314,8 @@ function saveSettings(){
   state.settings.fiscalQuarterStart = document.getElementById('fiscalQuarterStart').value || state.settings.fiscalQuarterStart;
   state.settings.tueAnchor = document.getElementById('tueAnchor').value;
   state.settings.defaultDeadlineDays = Number(document.getElementById('defaultDeadlineDays').value)||14;
+  state.settings.defaultRockHours = Number(document.getElementById('defaultRockHours').value);
+  if(isNaN(state.settings.defaultRockHours) || state.settings.defaultRockHours<0) state.settings.defaultRockHours = 14;
   state.settings.vtoOwnerFilter = document.getElementById('vtoOwnerFilter').value.trim();
   state.settings.msalClientId = document.getElementById('msalClientId').value.trim();
   state.settings.msalTenantId = document.getElementById('msalTenantId').value.trim();
@@ -2451,7 +2536,10 @@ function mergeVtoRocks(rockEntries){
       if(entry.due) rock.due = entry.due;
       rock.notes = notes;
     } else {
-      state.rocks.push({id: uid(), title: entry.title, owner: entry.owner||'Nick', due: entry.due || currentQuarterInfo().end, notes, milestones:[], todos:[]});
+      const due = entry.due || currentQuarterInfo().end;
+      const newRock = {id: uid(), title: entry.title, owner: entry.owner||'Nick', due, notes, milestones:[], todos:[]};
+      addRockPlaceholderTodo(newRock, due);
+      state.rocks.push(newRock);
     }
   });
 }
