@@ -1351,6 +1351,7 @@ function renderRocks(){
           <button class="icon-btn" onclick="deleteRock('${rock.id}')">Delete</button>
           <button class="icon-btn" onclick="openMsModal('${rock.id}')">+ Milestone</button>
           <button class="icon-btn" onclick="openTodoModal('${rock.id}','')">+ To-Do</button>
+          <button class="icon-btn" onclick="reserveRockTime('${rock.id}')" title="Reserves admin time toward this Rock right away, even before it's broken into sections">🕐 Reserve time</button>
           <button class="icon-btn" style="background:var(--accent-light);border-color:var(--accent);color:var(--accent);" onclick="openPlanModal('${rock.id}')">📋 Plan sections</button>
           <button class="icon-btn" onclick="toggleRockCollapsed('${rock.id}')">${collapsed?'▸ Show breakdown':'▾ Hide breakdown'}</button>
         </div>
@@ -1779,22 +1780,87 @@ function persistRockFromModal(){
 }
 // A brand-new Rock starts with zero to-dos, which means it gets zero admin
 // time booked for it until it's actually broken into sections — easy for a
-// Rock to sit untouched for weeks. So it starts with one placeholder to-do
-// that reserves `defaultRockHours` of admin time toward it. Actually
-// planning the Rock (Plan sections / Ask Claude / Upload a plan) replaces
-// this placeholder with the real breakdown automatically — see
-// removeRockPlaceholders(), called at the start of savePlanSections().
-function addRockPlaceholderTodo(rock, due){
-  const hours = state.settings.defaultRockHours;
+// Rock to sit untouched for weeks. So it starts with placeholder to-dos that
+// reserve `defaultRockHours` of admin time toward it — actually planning
+// the Rock (Plan sections / Ask Claude / Upload a plan) replaces them with
+// the real breakdown automatically, see removeRockPlaceholders().
+//
+// IMPORTANT: the scheduler (runAutoReschedule) can only place a to-do into a
+// SINGLE admin slot that has room for its full hours in one go — it never
+// splits one to-do across multiple days. A single to-do worth 14 hours can
+// never fit any one admin window (Monday's ~3.5h, Tuesday/Thursday's ~8h),
+// so it would never actually get placed — it'd just fall through to the
+// "at risk, dumped right before the deadline" fallback and never show up as
+// blocked time in the diary at all. So the reservation is split into
+// slot-sized chunks (2h each) and — same spread used by "Plan sections" —
+// spaced out between today and the Rock's due date, so the first chunk's
+// deadline is soon and it actually claims the next available admin slot
+// straight away, instead of getting starved by everything else's closer
+// deadlines.
+function addRockPlaceholderTodo(rock, due, hoursOverride){
+  const hours = hoursOverride!=null ? hoursOverride : state.settings.defaultRockHours;
   if(!hours || hours<=0) return; // 0 = "off" for anyone who doesn't want this
+  const CHUNK_HOURS = 2;
+  const totalChunks = Math.ceil(hours / CHUNK_HOURS);
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const dueD = parseISO(due);
+  const totalDays = Math.max(1, Math.round((dueD - todayD)/(24*3600*1000)));
+  const step = totalDays / (totalChunks + 1);
   rock.todos = rock.todos || [];
-  rock.todos.push({
-    id: uid(), title: 'Plan & work on this Rock', deadline: due, hours,
-    done:false, scheduledDate:null, atRisk:false, __placeholder:true
-  });
+  let remaining = hours;
+  for(let i=0; i<totalChunks; i++){
+    const chunkHours = Math.min(CHUNK_HOURS, remaining);
+    remaining -= chunkHours;
+    const offset = Math.max(1, Math.round(step*(i+1)));
+    const deadline = isoDate(addDays(todayD, Math.min(offset, totalDays)));
+    const label = totalChunks>1 ? `Plan & work on this Rock (${i+1}/${totalChunks})` : 'Plan & work on this Rock';
+    rock.todos.push({
+      id: uid(), title: label, deadline, hours: chunkHours,
+      done:false, scheduledDate:null, atRisk:false, __placeholder:true
+    });
+  }
 }
 function removeRockPlaceholders(rock){
   rock.todos = (rock.todos||[]).filter(t=>!t.__placeholder);
+}
+// The auto-reserve-on-create only fires for a Rock created fresh through the
+// "New Rock" modal — any Rock that already existed before this feature (or
+// arrived via a Weekly VTO Update, which updates matching titles in place
+// rather than treating them as new) never got one and never will
+// automatically. This is the manual equivalent for those — a button on any
+// existing Rock to reserve time toward it on demand.
+function reserveRockTime(rockId){
+  const rock = state.rocks.find(r=>r.id===rockId);
+  if(!rock) return;
+  const hours = state.settings.defaultRockHours;
+  if(!hours || hours<=0){ alert('Rock time reservation is turned off (0 hours) in Settings — turn it back on there first if you want to use this.'); return; }
+  const existingHours = (rock.todos||[]).filter(t=>t.__placeholder && !t.done).reduce((s,t)=>s+Number(t.hours||0),0);
+  if(existingHours>0 && !confirm(`"${rock.title}" already has ${existingHours}h of auto-reserved time not yet planned. Add another ${hours}h on top of that?`)) return;
+  addRockPlaceholderTodo(rock, rock.due);
+  saveState(); render();
+  alert(`Reserved ${hours}h of admin time toward "${rock.title}" — check Day Schedule or Week View to see where it landed. Use "Plan sections" any time to replace it with the real breakdown.`);
+}
+// One-time repair for anyone who created a Rock with the earlier version of
+// this feature, before placeholders were split into slot-sized chunks — a
+// leftover single 14h (or whatever the setting was) placeholder can never
+// actually be scheduled into any one admin slot, so it just sits at the
+// bottom of the list flagged "at risk" and never shows up as blocked time
+// anywhere. Runs once on load: finds any not-done placeholder bigger than a
+// single slot can hold, and re-splits it (same total hours, freshly spread
+// from today) using the current addRockPlaceholderTodo() logic.
+function migrateOversizedPlaceholders(){
+  const CHUNK_HOURS = 2;
+  let changed = false;
+  (state.rocks||[]).forEach(rock=>{
+    const oversized = (rock.todos||[]).filter(t=>t.__placeholder && !t.done && Number(t.hours) > CHUNK_HOURS);
+    if(oversized.length===0) return;
+    const totalHours = oversized.reduce((s,t)=>s+Number(t.hours||0),0);
+    const oversizedIds = new Set(oversized.map(t=>t.id));
+    rock.todos = (rock.todos||[]).filter(t=>!oversizedIds.has(t.id));
+    addRockPlaceholderTodo(rock, rock.due, totalHours);
+    changed = true;
+  });
+  if(changed) saveState();
 }
 function saveRock(){
   const rockId = persistRockFromModal();
@@ -3173,6 +3239,8 @@ window.addEventListener('appinstalled', ()=>{
   const btn = document.getElementById('btnInstallApp');
   if(btn) btn.style.display = 'none';
 });
+
+migrateOversizedPlaceholders(); // repairs any pre-fix 14h-in-one-go placeholder left over from before Rock time was split into schedulable chunks — run here, not at load time, so it happens after BACKUP_KEY/MAX_BACKUPS below are actually initialized
 
 /* ---------- Seed example data on first run ---------- */
 if(state.rocks.length===0){
