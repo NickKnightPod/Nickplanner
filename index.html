@@ -155,6 +155,18 @@
   if(localStorage.getItem('eos_planner_theme_v1') === 'dark') document.body.classList.add('dark-mode');
 </script>
 
+<!-- AUTH GATE — this app is Nick-only. Everything below stays hidden
+     until a valid portal token with taskTracker access is confirmed. -->
+<div id="authGate" style="position:fixed;inset:0;background:var(--bg,#f7f7f5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:#fff;border:1px solid #e5e3de;border-radius:14px;padding:2.25rem 2rem;max-width:340px;width:100%;text-align:center;box-shadow:0 1px 8px rgba(0,0,0,0.06);">
+    <div style="font-weight:800;font-size:1.1rem;color:#2f6f4f;margin-bottom:.25rem;">NK Active</div>
+    <div style="font-size:.78rem;font-weight:600;color:#78766f;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.5rem;">Nick's Task Tracker</div>
+    <div id="authGateMsg" style="font-size:13px;color:#78766f;margin-bottom:1.25rem;">Sign in through the NK Active team portal.</div>
+    <div id="authGateErr" style="font-size:13px;color:#b23b3b;min-height:20px;margin-bottom:.5rem;"></div>
+    <button id="portal-signin-btn" style="width:100%;padding:12px;border-radius:10px;border:none;background:#2f6f4f;color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Sign In via Portal</button>
+  </div>
+</div>
+
 <header>
   <div>
     <h1>EOS Planner</h1>
@@ -487,33 +499,67 @@ function defaultState(){
   };
 }
 
-let state = loadState();
+// state starts as an empty shell; the real data is loaded from Airtable
+// (via the portal auth gate below) before boot() ever runs. Kept as a
+// plain `let` — every function below reads this same live binding, so
+// swapping it out for the loaded data after the fact is safe.
+let state = defaultState();
 
-function loadState(){
-  try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
-      const def = defaultState();
-      parsed.settings = Object.assign({}, def.settings, parsed.settings||{});
-      parsed.settings.adminWindows = Object.assign({}, def.settings.adminWindows, parsed.settings.adminWindows||{});
-      parsed.settings.lunchDays = Object.assign({}, def.settings.lunchDays, parsed.settings.lunchDays||{});
-      if(parsed.settings.breakMinutes === undefined) parsed.settings.breakMinutes = def.settings.breakMinutes;
-      if(parsed.settings.lunchMinutes === undefined) parsed.settings.lunchMinutes = def.settings.lunchMinutes;
-      if(!parsed.settings.fiscalQuarterStart) parsed.settings.fiscalQuarterStart = def.settings.fiscalQuarterStart;
-      parsed.outlookConflictDates = parsed.outlookConflictDates || {};
-      parsed.outlookCapacityOverride = parsed.outlookCapacityOverride || {};
-      parsed.outlookEvents = parsed.outlookEvents || {};
-      parsed.outlookLastSync = parsed.outlookLastSync || null;
-      parsed.lastExcelExportAt = parsed.lastExcelExportAt || null;
-      return parsed;
-    }
-  }catch(e){}
-  return defaultState();
+function normalizeLoadedState(parsed){
+  const def = defaultState();
+  parsed = parsed || {};
+  parsed.settings = Object.assign({}, def.settings, parsed.settings||{});
+  parsed.settings.adminWindows = Object.assign({}, def.settings.adminWindows, parsed.settings.adminWindows||{});
+  parsed.settings.lunchDays = Object.assign({}, def.settings.lunchDays, parsed.settings.lunchDays||{});
+  if(parsed.settings.breakMinutes === undefined) parsed.settings.breakMinutes = def.settings.breakMinutes;
+  if(parsed.settings.lunchMinutes === undefined) parsed.settings.lunchMinutes = def.settings.lunchMinutes;
+  if(!parsed.settings.fiscalQuarterStart) parsed.settings.fiscalQuarterStart = def.settings.fiscalQuarterStart;
+  parsed.rocks = parsed.rocks || [];
+  parsed.outlookConflictDates = {};
+  parsed.outlookCapacityOverride = {};
+  parsed.outlookEvents = {};
+  parsed.outlookLastSync = null; // Outlook data is always re-fetched live, never persisted
+  parsed.lastExcelExportAt = parsed.lastExcelExportAt || null;
+  return parsed;
 }
+
+/* ---------- Airtable-backed persistence ----------
+Primary storage is now the NK Active Task Tracker Airtable base (one row
+in Settings holding the whole planner as JSON — see DATA_ENDPOINT below).
+localStorage is kept ONLY as: (a) a one-time source to migrate your old
+data in, and (b) the existing rolling daily-backup safety net below. */
+const DATA_ENDPOINT = '/.netlify/functions/state';
+
+async function loadStateFromAirtable(token){
+  const res = await fetch(DATA_ENDPOINT, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action:'load', token })
+  });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'Could not load your planner data.');
+  return data.json ? normalizeLoadedState(JSON.parse(data.json)) : null;
+}
+
+let saveTimer = null;
+let lastSavedToken = null;
 function saveState(){
-  localStorage.setItem(LS_KEY, JSON.stringify(state));
-  snapshotDailyBackup();
+  snapshotDailyBackup(); // local safety-net snapshot, unchanged
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(syncStateToAirtable, 700); // debounce rapid edits into one write
+}
+async function syncStateToAirtable(){
+  if(!lastSavedToken) return; // not authenticated yet — nothing to sync to
+  const toSave = Object.assign({}, state, {
+    outlookConflictDates: {}, outlookCapacityOverride: {}, outlookEvents: {}, outlookLastSync: null
+  });
+  try{
+    const res = await fetch(DATA_ENDPOINT, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'save', token: lastSavedToken, json: JSON.stringify(toSave) })
+    });
+    const data = await res.json();
+    if(!data.ok) console.error('Airtable save failed:', data.error);
+  }catch(e){ console.error('Airtable save failed:', e); }
 }
 
 /* ---------- Local backup safety net ----------
@@ -549,10 +595,10 @@ function restoreBackup(date){
   if(!confirm(`Restore the planner to how it was on ${fmtDate(date)}? Your CURRENT data will be replaced — export to Excel first if you want to keep it too. This can't be undone.`)) return;
   try{
     const restored = JSON.parse(b.json);
-    localStorage.setItem(LS_KEY, b.json);
-    state = restored;
+    state = normalizeLoadedState(restored);
     closeModal('settingsModalBg');
     render();
+    saveState(); // push the restored backup back up to Airtable, not just this browser
     alert('Restored to ' + fmtDate(date) + '.');
   }catch(e){
     alert('Could not restore that backup: ' + e.message);
@@ -2367,7 +2413,7 @@ function renderDayAdjustList(){
   }).join('');
 }
 function resetAllData(){
-  if(!confirm('This clears everything stored in this browser for the planner (Rocks, To-Dos, holidays, Outlook connection) and cannot be undone. Export to Excel first if you want a backup. Continue?')) return;
+  if(!confirm('This clears everything in your planner (Rocks, To-Dos, holidays, Outlook connection) — including what\'s saved in Airtable — and cannot be undone. Export to Excel first if you want a backup. Continue?')) return;
   localStorage.removeItem(LS_KEY);
   state = defaultState();
   msalAccount = null;
@@ -3240,36 +3286,101 @@ window.addEventListener('appinstalled', ()=>{
   if(btn) btn.style.display = 'none';
 });
 
-migrateOversizedPlaceholders(); // repairs any pre-fix 14h-in-one-go placeholder left over from before Rock time was split into schedulable chunks — run here, not at load time, so it happens after BACKUP_KEY/MAX_BACKUPS below are actually initialized
+function boot(){
+  migrateOversizedPlaceholders(); // repairs any pre-fix 14h-in-one-go placeholder left over from before Rock time was split into schedulable chunks — run here, not at load time, so it happens after BACKUP_KEY/MAX_BACKUPS below are actually initialized
 
-/* ---------- Seed example data on first run ---------- */
-if(state.rocks.length===0){
-  const rockId = uid();
-  const msId = uid();
-  const qEnd = currentQuarterInfo().end;
-  state.rocks.push({
-    id: rockId, title: 'Example Rock — replace with your own', owner:'Nick', due: qEnd, notes:'Delete this once you\'ve added your real Rocks.',
-    milestones: [{id: msId, title:'Example milestone', due: isoDate(addDays(new Date(),21)), todos:[
-      {id: uid(), title:'Example to-do', deadline: isoDate(addDays(new Date(),14)), hours:2, done:false, scheduledDate:null, atRisk:false}
-    ]}],
-    todos: [], __seed:true
-  });
-  saveState();
+  /* ---------- Seed example data on first run (genuinely empty account) ---------- */
+  if(state.rocks.length===0){
+    const rockId = uid();
+    const msId = uid();
+    const qEnd = currentQuarterInfo().end;
+    state.rocks.push({
+      id: rockId, title: 'Example Rock — replace with your own', owner:'Nick', due: qEnd, notes:'Delete this once you\'ve added your real Rocks.',
+      milestones: [{id: msId, title:'Example milestone', due: isoDate(addDays(new Date(),21)), todos:[
+        {id: uid(), title:'Example to-do', deadline: isoDate(addDays(new Date(),14)), hours:2, done:false, scheduledDate:null, atRisk:false}
+      ]}],
+      todos: [], __seed:true
+    });
+    saveState();
+  }
+
+  render();
+
+  /* Pick up an already-connected Outlook session on reload, if one exists */
+  (async function bootstrapOutlook(){
+    if(!state.settings.msalClientId) return;
+    try{
+      const client = getMsalInstance();
+      await client.initialize();
+      await client.handleRedirectPromise();
+      const accounts = client.getAllAccounts();
+      if(accounts.length){ msalAccount = accounts[0]; client.setActiveAccount(msalAccount); updateOutlookStatusUI(); }
+    }catch(e){ /* not connected yet, ignore */ }
+  })();
 }
 
-render();
+/* ---------- AUTH (portal token) — gates everything above ---------- */
+const PORTAL_URL = "https://nkactivehub.netlify.app/";
+const VERIFY_ENDPOINT = "/.netlify/functions/verify-token";
+const SESSION_KEY = "nk_tasktracker_session";
 
-/* Pick up an already-connected Outlook session on reload, if one exists */
-(async function bootstrapOutlook(){
-  if(!state.settings.msalClientId) return;
+function goToPortalLogin(){
+  const returnTo = window.location.origin + window.location.pathname;
+  window.location.href = `${PORTAL_URL}?returnTo=${encodeURIComponent(returnTo)}`;
+}
+document.getElementById('portal-signin-btn').addEventListener('click', goToPortalLogin);
+
+async function verifyToken(token){
+  const res = await fetch(VERIFY_ENDPOINT, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ token }),
+  });
+  return res.json();
+}
+
+async function initAuth(){
+  const err = document.getElementById('authGateErr');
+  const msg = document.getElementById('authGateMsg');
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('token');
+  const token = urlToken || sessionStorage.getItem(SESSION_KEY);
+  if(!token) return; // stay on the "Sign In via Portal" screen
+
   try{
-    const client = getMsalInstance();
-    await client.initialize();
-    await client.handleRedirectPromise();
-    const accounts = client.getAllAccounts();
-    if(accounts.length){ msalAccount = accounts[0]; client.setActiveAccount(msalAccount); updateOutlookStatusUI(); }
-  }catch(e){ /* not connected yet, ignore */ }
-})();
+    const result = await verifyToken(token);
+    if(!result.ok || !(result.access && result.access.taskTracker)){
+      sessionStorage.removeItem(SESSION_KEY);
+      if(urlToken) err.textContent = 'That sign-in link is no longer valid — please sign in again.';
+      return;
+    }
+    sessionStorage.setItem(SESSION_KEY, token);
+    lastSavedToken = token;
+    if(urlToken) window.history.replaceState({}, '', window.location.pathname);
+
+    msg.textContent = 'Loading your planner…';
+    let loaded = await loadStateFromAirtable(token);
+
+    if(!loaded){
+      // Nothing in Airtable yet — one-time migration from this browser's
+      // existing local data, if any, so nothing gets lost in the move.
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(raw){
+          loaded = normalizeLoadedState(JSON.parse(raw));
+          msg.textContent = 'Moving your existing data to Airtable…';
+        }
+      }catch(e){}
+    }
+
+    state = loaded || defaultState();
+    document.getElementById('authGate').style.display = 'none';
+    boot();
+    saveState(); // ensures Airtable has this session's data (covers the migration case especially)
+  }catch(e){
+    err.textContent = 'Could not verify your sign-in — check your connection and try again.';
+  }
+}
+initAuth();
 </script>
 </body>
 </html>
